@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="color-scheme" content="dark light">
+<title>KalMydas perso</title>
+<link rel="stylesheet" href="style.css">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#0b0d12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+</head>
+<body>
+<div id="app"></div>
+<noscript>Cette page a besoin de JavaScript.</noscript>
+<script src="js/core.js"></script>
+<script src="js/charts.js"></script>
+<!-- data/ciqual.js (1,5 Mo) n'est pas lu ici : js/foods.js le charge sans bloquer l'écran du verrou -->
+<script src="data/drv.js"></script>
+<script src="js/foods.js"></script>
+<!-- data/repas.js, regimes.js, arbre_aliments.js, reserves.js (640 Ko) : lus par js/donnees.js pendant la saisie du mot de passe -->
+<script src="js/donnees.js"></script>
+<script src="js/portions.js"></script>
+<script src="js/recherche.js"></script>
+<script src="js/profil.js"></script>
+<script src="js/argent.js"></script>
+<script src="js/chaine.js"></script>
+<script src="js/importer.js"></script>
+<script src="js/trading.js"></script>
+<script src="js/plan.js"></script>
+<script src="js/plan_more.js"></script>
+<script src="js/muscu.js"></script>
+<script src="js/nutrition.js"></script>
+<script src="js/nutri_more.js"></script>
+<script src="js/nutri_texte.js"></script>
+<script src="js/reserves_calc.js"></script>
+<script src="js/reserves.js"></script>
+<script src="js/preferences.js"></script>
+<script src="js/menu.js"></script>
+<script src="js/sources.js"></script>
+<script src="js/rapide.js"></script>
+<script src="js/app.js"></script>
+<script>if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});</script>
+</body>
+</html>

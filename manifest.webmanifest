@@ -1,0 +1,18 @@
+{
+  "name": "KalMydas perso",
+  "short_name": "KM perso",
+  "description": "Argent, plan de vie et nutrition, chiffrés sur cet appareil.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b0d12",
+  "theme_color": "#0b0d12",
+  "lang": "fr",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }],
+  "shortcuts": [
+    { "name": "Repas", "short_name": "Repas", "url": "./index.html#/rapide/repas", "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }] },
+    { "name": "Un verre d'eau", "short_name": "Eau", "url": "./index.html#/rapide/eau", "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }] },
+    { "name": "Humeur du jour", "short_name": "Humeur", "url": "./index.html#/rapide/humeur", "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }] },
+    { "name": "Séance de sport", "short_name": "Séance", "url": "./index.html#/rapide/seance", "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }] }
+  ]
+}

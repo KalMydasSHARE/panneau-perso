@@ -1,0 +1,11 @@
+# Seuls les fichiers de l'application partent sur GitHub Pages. Tout le reste reste sur l'ordinateur.
+/*
+!/.gitignore
+!/.nojekyll
+!/index.html
+!/style.css
+!/sw.js
+!/manifest.webmanifest
+!/icon.svg
+!/js/
+!/data/
