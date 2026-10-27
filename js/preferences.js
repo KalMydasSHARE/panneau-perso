@@ -240,7 +240,7 @@ function appliquerPreference(lu) {
 }
 
 /* ---------- écran Préférences ---------- */
-const PRF_UI = { open: new Set(), q: '', texte: '' };
+const PRF_UI = { open: new Set(), q: '', texte: '', arbre: false };
 // Comptes par nœud selon le verdict de chaque aliment (exclus, à éviter, aimés), refaits quand les préférences changent
 function comptesNoeuds() {
   const cx = prefsCtx(), A = arbreIx(); if (!A) return new Map();
@@ -292,10 +292,11 @@ function carteFacon(p) {
     h('small', { class: 'muted block' }, `Cru et bien combiné ensemble : ${n(m => m.cru && m.shelton)} repas.`));
 }
 // Repas pour toi (27 octobre 2026) : ce que tes choix donnent, tout de suite. Ce que tu aimes passe devant, puis un ordre fixe du jour qui mélange.
-const PRF_POUR = { n: 8, moment: '' };
+const PRF_POUR = { n: 0, moment: '' }; // 0 : la taille de départ (5 sur téléphone, 8 sinon)
 function carteRepasPourToi() {
   if (!REPAS_OK() || typeof mnRepasInfo !== 'function') return null;
   const cx = prefsCtx(), info = mnRepasInfo(), p = cx.p, mo = PRF_POUR.moment;
+  if (!PRF_POUR.n) PRF_POUR.n = estTelephone() ? 5 : 8;
   const garde = REPAS.repas.filter(m => (mo === 'seul' ? m.seul : !!m.seul === !!p.seul)
     && (!mo || mo === 'seul' || (m.seul ? m.creneaux.includes(mo) : m.creneau === mo)) && verdictRepas(m, cx).v !== 'exclu');
   const graine = Number(today().replace(/-/g, '')), melange = id => { let x = graine; for (const c of id) x = (x * 31 + c.charCodeAt(0)) % 2147483647; return x; };
@@ -315,7 +316,7 @@ function carteRepasPourToi() {
   };
   return h('section', { class: 'card' }, h('h3', null, 'Repas pour toi'),
     h('small', { class: 'muted block' }, garde.length ? `${garde.length} repas tiennent tes choix${nAime ? `, dont ${nAime} avec ce que tu aimes (en premier)` : ''}. Mets ♥ sur un aliment plus bas : ses repas passent devant.` : 'Aucun repas ne tient tous tes choix. Retire un exclu ou une façon de manger.'),
-    seg([['', 'Tous'], ...MN_CRENEAUX.map(c => [c.k, c.meal]), ['seul', 'Un seul aliment']], mo, v => { PRF_POUR.moment = v; PRF_POUR.n = 8; rerender(); }),
+    seg([['', 'Tous'], ...MN_CRENEAUX.map(c => [c.k, c.meal]), ['seul', 'Un seul aliment']], mo, v => { PRF_POUR.moment = v; PRF_POUR.n = 0; rerender(); }),
     h('div', { class: 'list' }, tri.slice(0, PRF_POUR.n).map(ligne)),
     tri.length > PRF_POUR.n ? h('button', { class: 'btn small ghost', onclick: () => { PRF_POUR.n += 12; rerender(); } }, `Voir plus (${tri.length - PRF_POUR.n} de plus)`) : null);
 }
@@ -348,7 +349,7 @@ function vuePreferences(root) {
       nRepas !== null ? h('small', { class: 'muted block' }, `Bibliothèque : ${nRepas} ${p.seul ? "repas d'un seul aliment" : "repas complets"} sur ${bibRepas.length} tiennent toutes tes préférences.`) : null),
     carteFacon(p),
     carteRepasPourToi(),
-    h('section', { class: 'card' }, h('h3', null, 'Allergies et intolérances'),
+    foldCard('prefs-allergies', `Allergies et intolérances${p.allergies.length ? ` · ${p.allergies.length}` : ''}`, [
       h('div', { class: 'chips', role: 'group', 'aria-label': 'Allergies et intolérances' }, [...ALLERG_UE(), ...INTOL()].map(t => {
         const on = p.allergies.includes(t), d = flagDef(t) || {};
         return h('button', { type: 'button', class: `chip pick${on ? ' sel-bad' : ''}`, 'aria-pressed': on ? 'true' : 'false', title: `${d.def || ''} Source : ${d.source || ''}.`, onclick: () => basculerAllergie(t) }, `${on ? '✕ ' : ''}${flagNom(t)}`);
@@ -356,7 +357,7 @@ function vuePreferences(root) {
       h('div', { class: 'row wrap' }, h('small', { class: 'muted' }, 'Mode :'), seg([['souple', 'Souple'], ['strict', 'Strict']], p.strict ? 'strict' : 'souple', v => { const r = garde(p, 'strict'); p.strict = v === 'strict'; save(); rerender(); undoable(`Mode ${v}`, r); })),
       h('small', { class: 'muted block' }, p.strict ? 'Strict : un aliment dont la recette est inconnue pour cet allergène (« ? ») est écarté aussi. À prendre pour une allergie grave.'
         : 'Souple : un aliment présent (« 1 ») est écarté ; un aliment à recette inconnue (« ? ») reste proposé avec la mention « à vérifier ».'),
-      h('p', { class: 'unk small' }, FOODFLAGS.meta.avertissement)),
+      h('p', { class: 'unk small' }, FOODFLAGS.meta.avertissement)], { open: p.allergies.length > 0 }),
     h('section', { class: 'card' }, h('h3', null, 'Ce que je veux ou ne veux pas'),
       h('div', { class: 'form' }, texte, apercu),
       h('div', { class: 'row wrap', style: { marginTop: '.6rem' } }, inp('search', PRF_UI.q, { 'aria-label': 'Chercher dans la liste à cocher', placeholder: 'Chercher dans la liste (poulet, tomate, coriandre…)', oninput: e => { PRF_UI.q = e.target.value; rerender(); } }),
@@ -364,7 +365,7 @@ function vuePreferences(root) {
       h('div', { class: 'legende small muted' }, ETATS.map(([e, l, ic]) => h('span', null, h('b', { class: `e-${e}` }, ic), ` ${l}`)), h('span', null, 'Un état posé sur une famille vaut pour toute la famille.')),
       mq.length ? h('div', { class: 'arbre' }, trouves.length ? trouves.map(x => h('div', null, h('small', { class: 'muted' }, cheminNoeud(x.k)), ligneNoeud(x.k, cpt))) : h('div', { class: 'empty' }, 'Aucune famille ni aliment de base à ce nom.'),
         alimTrouves.length ? h('div', null, h('small', { class: 'muted up' }, 'Aliments précis'), alimTrouves.map(f => ligneAliment(f.id))) : null)
-        : h('div', { class: 'arbre' }, ARBRE.racine.map(x => ligneNoeud(x.k, cpt))),
+        : h('details', { class: 'arbre-pli', open: PRF_UI.arbre, ontoggle: e => { PRF_UI.arbre = e.target.open; } }, h('summary', null, `Liste à cocher : ${ARBRE.racine.length} familles`), h('div', { class: 'arbre' }, ARBRE.racine.map(x => ligneNoeud(x.k, cpt)))),
       h('label', { class: 'daybox', style: { marginTop: '.6rem' } }, h('input', { type: 'checkbox', checked: p.masquer, onchange: e => { p.masquer = e.target.checked; save(); rerender(); } }), 'Masquer dans la recherche d\'aliments ce que j\'exclus'),
       p.repasNon.length ? h('div', { class: 'row wrap', style: { marginTop: '.5rem' } }, h('small', { class: 'muted' }, `${p.repasNon.length} repas refusé${p.repasNon.length > 1 ? 's' : ''} (« Pas pour moi »).`),
         h('button', { class: 'btn small ghost', onclick: () => { const r = garde(p, 'repasNon'); p.repasNon = []; save(); rerender(); undoable('Repas refusés remis dans les propositions', r); } }, 'Les remettre')) : null));

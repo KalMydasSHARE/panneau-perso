@@ -79,7 +79,7 @@ const fmtNum = n => nfNum.format(Number.isFinite(n) ? n : 0);
 const nfInt = new Intl.NumberFormat('fr-CH', { maximumFractionDigits: 0 });
 const fmtK = n => nfInt.format(Math.round(Number.isFinite(n) ? n : 0));
 const fmtG = n => (Math.abs(Number.isFinite(n) ? n : 0) >= 10 ? fmtK(n) : fmtNum(n));
-const fmtPct = (n, d = 1) => `${(Number.isFinite(n) ? n : 0).toFixed(d).replace('.', ',')} %`;
+const fmtPct = (n, d = 1) => `${(Number.isFinite(n) ? n : 0).toFixed(d).replace('.', ',')} %`; // espace insécable : le % ne passe jamais seul à la ligne
 const num = v => { const n = parseFloat(String(v).replace(/\s/g, '').replace(',', '.')); return Number.isFinite(n) ? n : 0; };
 const sum = (arr, f = x => x) => arr.reduce((a, x) => a + f(x), 0);
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));

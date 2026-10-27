@@ -117,6 +117,22 @@ function focusBack(m) {
   if (m.text) try { el.setSelectionRange(el.value.length, el.value.length); } catch { /* champ sans sélection */ }
 }
 let rendering = false;
+/* Téléphone (27 octobre 2026) : une explication longue tient sur deux lignes, un toucher l'ouvre en entier (gardée ouverte jusqu'au rechargement de la page).
+   Jamais un avertissement (« à vérifier », allergies, erreur) ni un texte qui porte un bouton ou un lien. */
+const PLIS_OUVERTS = new Set();
+const estTelephone = () => !!(window.matchMedia && matchMedia('(max-width:760px)').matches);
+function plierExplications(root) {
+  if (!estTelephone()) return;
+  for (const e of root.querySelectorAll('small.muted, p.small, p.muted, .why')) {
+    if (e.classList.contains('unk') || e.classList.contains('neg') || e.closest('button,a,label,.item,.noeud-ligne,.pick-line')) continue;
+    if (e.querySelector('button,a,input,select,textarea')) continue;
+    const t = e.textContent.trim(); if (t.length < 110) continue;
+    e.classList.add('plie'); if (PLIS_OUVERTS.has(t)) e.classList.add('ouvert');
+    e.setAttribute('role', 'button'); e.tabIndex = 0; e.setAttribute('aria-expanded', PLIS_OUVERTS.has(t) ? 'true' : 'false');
+    const bascule = ev => { ev.stopPropagation(); const o = e.classList.toggle('ouvert'); e.setAttribute('aria-expanded', o ? 'true' : 'false'); if (o) PLIS_OUVERTS.add(t); else PLIS_OUVERTS.delete(t); };
+    e.addEventListener('click', bascule); e.addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); bascule(ev); } });
+  }
+}
 function render() {
   if (!STATE) return;
   if (rendering) return void setTimeout(render, 0); // un rendu demandé pendant un rendu passe juste après
@@ -130,7 +146,7 @@ function render() {
     if (m.subs) main.append(h('nav', { class: 'subtabs', 'aria-label': m.title }, m.subs.map(([k, l]) => h('a', { href: `#/${route.mod}/${k}`, class: k === tab ? 'on' : '', 'aria-current': k === tab ? 'page' : null }, l))));
     const body = h('div', { class: 'view' });
     main.append(body);
-    try { m.render(body, active); } catch (e) { // un écran qui casse ne doit pas laisser une page blanche
+    try { m.render(body, active); plierExplications(body); } catch (e) { // un écran qui casse ne doit pas laisser une page blanche
       console.error(e);
       body.replaceChildren(h('section', { class: 'card' }, h('h3', null, 'Cet écran n\'a pas pu s\'afficher'), h('p', { class: 'neg' }, e.message), h('p', { class: 'muted' }, 'Tes données ne sont pas touchées. Les autres écrans restent utilisables.')));
     }
