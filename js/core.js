@@ -294,13 +294,13 @@ function defaultState() {
 }
 /* Préférences alimentaires : profil (clé de FOODFLAGS.meta.profils), allergies et intolérances (drapeaux), mode strict (un drapeau inconnu écarte),
    états posés dans la liste à cocher (noeuds, aliments), drapeaux exclus ou évités venus de la liste, repas refusés, masquer ce que j'exclus. */
-function defaultPrefs() { return { profil: null, allergies: [], strict: false, noeuds: {}, aliments: {}, flagsExclus: [], flagsEviter: [], repasNon: [], masquer: true, cru: false, shelton: false }; }
+function defaultPrefs() { return { profil: null, allergies: [], strict: false, noeuds: {}, aliments: {}, flagsExclus: [], flagsEviter: [], repasNon: [], masquer: true, cru: false, shelton: false, seul: false }; }
 function migratePrefs(p) {
   const d = defaultPrefs(), o = { ...d, ...(p && typeof p === 'object' ? p : {}) };
   for (const k of ['allergies', 'flagsExclus', 'flagsEviter', 'repasNon']) if (!Array.isArray(o[k])) o[k] = [];
   for (const k of ['noeuds', 'aliments']) if (!o[k] || typeof o[k] !== 'object' || Array.isArray(o[k])) o[k] = {};
   if (typeof o.profil !== 'string') o.profil = null;
-  o.strict = !!o.strict; o.masquer = o.masquer !== false; o.cru = !!o.cru; o.shelton = !!o.shelton;
+  o.strict = !!o.strict; o.masquer = o.masquer !== false; o.cru = !!o.cru; o.shelton = !!o.shelton; o.seul = !!o.seul;
   return o;
 }
 function migrate(s) {

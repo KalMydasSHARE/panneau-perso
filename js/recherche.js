@@ -10,6 +10,7 @@ const SYNONYMES = {
   yogourt: ['yaourt', 'yogourt'], yoghourt: ['yaourt', 'yogourt'], yoghurt: ['yaourt', 'yogourt'], yogurt: ['yaourt', 'yogourt'], yaourt: ['yaourt', 'yogourt'],
   birchermuesli: ['birchermuesli', 'muesli'], birchermusli: ['birchermuesli', 'muesli'], bircher: ['birchermuesli', 'bircher'], musli: ['muesli'],
   coca: ['cola'], coke: ['cola'], cocacola: ['cola'],
+  redbull: ['energisante'], monster: ['energisante'], energy: ['energisante'], burn: ['energisante'], schnitzel: ['escalope'], wienerli: ['saucisse'],
   spaghetti: ['spaghetti', 'pates'], nouille: ['nouille', 'pates'], macaroni: ['macaroni', 'pates'], penne: ['penne', 'pates'], tagliatelle: ['tagliatelle', 'pates'], coquillette: ['coquillette', 'pates'], pate: ['pate'],
   patate: ['pomme de terre'], pdt: ['pomme de terre'], cervelat: ['cervelas', 'cervelat'], steak: ['steak', 'bifteck'], ovo: ['ovomaltine', 'ovo'],
   ketchup: ['ketchup'], chips: ['chips'], frite: ['frite'], ble: ['ble'], fromage: ['fromage']
@@ -29,7 +30,7 @@ const tete = n => tokens(n.split(',')[0].replace(/\s*\(.*?\)/g, '')).filter(t =>
 
 // Pour chaque mot tapé : la liste des alternatives, chacune une liste de mots à trouver dans le nom.
 function motsCherches(q) {
-  return normFood(q.trim()).replace(/['’-]/g, ' ').split(/[\s,;]+/).filter(w => /[a-z0-9]/.test(w)).map(w => { // un signe seul (/, +) ne cherche rien
+  return normFood(q.trim()).replace(/\bred\s+bull\b/g, 'redbull').replace(/['’-]/g, ' ').split(/[\s,;]+/).filter(w => /[a-z0-9]/.test(w)).map(w => { // un signe seul (/, +) ne cherche rien
     const s = singulier(w), alts = new Set([s]);
     for (const k of [w, s]) for (const a of SYNONYMES[k] || []) alts.add(a);
     return [...alts].map(a => a.split(' '));

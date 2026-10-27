@@ -72,7 +72,7 @@ function prefsCtx() {
     if (man === 'eviter' || evi.length) { out.eviter = true; if (out.v === 'ok') { out.v = 'eviter'; out.pourquoi = evi.length ? evi : ['ta liste']; } }
     return out;
   }
-  const actif = !!(prof && (prof.exclut.length || prof.eviter.length)) || allerg.length > 0 || exListe.length > 0 || ev.length > 0 || Object.keys(p.noeuds).length > 0 || Object.keys(p.aliments).length > 0 || p.repasNon.length > 0 || p.cru || p.shelton;
+  const actif = !!(prof && (prof.exclut.length || prof.eviter.length)) || allerg.length > 0 || exListe.length > 0 || ev.length > 0 || Object.keys(p.noeuds).length > 0 || Object.keys(p.aliments).length > 0 || p.repasNon.length > 0 || p.cru || p.shelton || p.seul;
   return (prefsCtx.c = { sig, p, prof, allerg, ex, actif, v: id => { let r = cache.get(id); if (!r) { r = calc(id); cache.set(id, r); } return r; }, rcache });
 }
 const verdictAliment = id => prefsCtx().v(id);
@@ -92,6 +92,7 @@ function verdictRepas(m, cx = prefsCtx()) {
   if (p.repasNon.includes(m.id)) exclu('tu as dit ne pas aimer ce repas');
   if (p.cru && !m.cru) exclu('pas cru');
   if (p.shelton && !m.shelton) exclu(m.combi ? `mal combiné : ${m.combi.join(', ')}` : 'mal combiné');
+  if (p.seul && !m.seul) exclu('plus d\'un aliment');
   const rg = PROFIL_VERS_REPAS[p.profil];
   if (rg && !m.regimes.includes(rg)) exclu(`étiquette du repas : pas ${(REPAS.regimes[rg] || rg).toLowerCase()}`);
   for (const t of new Set([...cx.ex])) {
@@ -132,6 +133,7 @@ function prefsResume() {
   const na = Object.values(p.noeuds).filter(e => e === 'aime').length + Object.values(p.aliments).filter(e => e === 'aime').length;
   if (p.cru) parts.push('cru');
   if (p.shelton) parts.push('bien combiné');
+  if (p.seul) parts.push('un seul aliment');
   if (nx) parts.push(`${nx} exclu${nx > 1 ? 's' : ''} dans ta liste`);
   if (na) parts.push(`${na} aimé${na > 1 ? 's' : ''}`);
   return parts.join(' · ');
@@ -285,8 +287,37 @@ function carteFacon(p) {
   return h('section', { class: 'card' }, h('h3', null, 'Ma façon de manger'),
     h('div', { class: 'chips', role: 'group', 'aria-label': 'Ma façon de manger' },
       chip('cru', 'Cru', n(m => m.cru), 'Aucune cuisson, chaque ingrédient cru. Coché : le menu et la bibliothèque ne proposent que ces repas.'),
-      chip('shelton', 'Bien combiné (Shelton)', n(m => m.shelton), 'Jamais un féculent avec une protéine, un fruit acide ou du sucre, une seule protéine, les fruits sans légumes, melon et lait seuls. Règles de naturopathie, pas un consensus médical.')),
-    h('small', { class: 'muted block' }, `Les deux ensemble : ${n(m => m.cru && m.shelton)} repas.`));
+      chip('shelton', 'Bien combiné (Shelton)', n(m => m.shelton), 'Jamais un féculent avec une protéine, un fruit acide ou du sucre, une seule protéine, les fruits sans légumes, melon et lait seuls. Règles de naturopathie, pas un consensus médical.'),
+      chip('seul', 'Un seul aliment', n(m => m.seul), 'Un fruit, un légume, un fromage, une viande… seul. Coché : le menu ne propose que des repas d\'un seul aliment.')),
+    h('small', { class: 'muted block' }, `Cru et bien combiné ensemble : ${n(m => m.cru && m.shelton)} repas.`));
+}
+// Repas pour toi (27 octobre 2026) : ce que tes choix donnent, tout de suite. Ce que tu aimes passe devant, puis un ordre fixe du jour qui mélange.
+const PRF_POUR = { n: 8, moment: '' };
+function carteRepasPourToi() {
+  if (!REPAS_OK() || typeof mnRepasInfo !== 'function') return null;
+  const cx = prefsCtx(), info = mnRepasInfo(), p = cx.p, mo = PRF_POUR.moment;
+  const garde = REPAS.repas.filter(m => (mo === 'seul' ? m.seul : !!m.seul === !!p.seul)
+    && (!mo || mo === 'seul' || (m.seul ? m.creneaux.includes(mo) : m.creneau === mo)) && verdictRepas(m, cx).v !== 'exclu');
+  const graine = Number(today().replace(/-/g, '')), melange = id => { let x = graine; for (const c of id) x = (x * 31 + c.charCodeAt(0)) % 2147483647; return x; };
+  // ici, un repas « avec ce que tu aimes » en contient, même un peu : la plus grande part passe devant (le menu garde sa règle des 20 %)
+  const partAime = m => { let t = 0, a = 0; for (const [id, g] of m.ing) { t += g; if (cx.v(id).aime) a += g; } return t ? a / t : 0; };
+  const aimeDe = new Map(garde.map(m => [m.id, partAime(m)]));
+  const tri = garde.map(m => ({ m, a: aimeDe.get(m.id), r: verdictRepas(m, cx).v === 'ok' ? 0 : 1, x: melange(m.id) }))
+    .sort((a, b) => (b.a > 0) - (a.a > 0) || a.r - b.r || b.a - a.a || a.x - b.x).map(o => o.m);
+  const nAime = garde.filter(m => aimeDe.get(m.id) > 0).length;
+  const ligne = m => {
+    const vr = verdictRepas(m, cx), mi = info.get(m.id), cr = m.seul ? m.creneaux[0] : m.creneau, meal = MN_CRENEAUX.find(c => c.k === cr).meal;
+    const o = { m, vr, coef: 1, portion: 'normale', meal, slot: cr, kcal: mi.kcal, p: mi.vec[mnKeys().iP], top: [], phrase: '' };
+    return h('div', { class: 'item' }, h('div', { class: 'grow click', onclick: () => mnDetail(o), title: 'Voir les ingrédients' }, h('b', null, m.nom),
+      h('small', { class: 'muted' }, ` · ${m.seul ? 'un seul aliment' : meal.toLowerCase()}${aimeDe.get(m.id) > 0 ? ' · ♥' : ''} · ${fmtK(mi.kcal)} kcal · ${fmtG(o.p)} g prot.`),
+      vr.v === 'a_verifier' ? h('small', { class: 'unk block' }, `À vérifier : ${vr.doute.map(t => flagNom(t).toLowerCase()).join(', ')}`) : null),
+      h('button', { class: 'btn small', 'aria-label': `Je le mange : ${m.nom}`, onclick: () => mnManger(o) }, 'Je le mange'));
+  };
+  return h('section', { class: 'card' }, h('h3', null, 'Repas pour toi'),
+    h('small', { class: 'muted block' }, garde.length ? `${garde.length} repas tiennent tes choix${nAime ? `, dont ${nAime} avec ce que tu aimes (en premier)` : ''}. Mets ♥ sur un aliment plus bas : ses repas passent devant.` : 'Aucun repas ne tient tous tes choix. Retire un exclu ou une façon de manger.'),
+    seg([['', 'Tous'], ...MN_CRENEAUX.map(c => [c.k, c.meal]), ['seul', 'Un seul aliment']], mo, v => { PRF_POUR.moment = v; PRF_POUR.n = 8; rerender(); }),
+    h('div', { class: 'list' }, tri.slice(0, PRF_POUR.n).map(ligne)),
+    tri.length > PRF_POUR.n ? h('button', { class: 'btn small ghost', onclick: () => { PRF_POUR.n += 12; rerender(); } }, `Voir plus (${tri.length - PRF_POUR.n} de plus)`) : null);
 }
 function vuePreferences(root) {
   if (!FLAGS_OK() || !ARBRE_OK()) return put(root, h('section', { class: 'card' }, h('h3', null, 'Préférences'), h('p', { class: 'neg' }, `Données des régimes non chargées (${DONNEES_CHARGE.err.join(', ') || 'chargement en cours'}). Recharge la page.`)));
@@ -316,6 +347,7 @@ function vuePreferences(root) {
       comptes ? h('small', { class: 'muted block' }, `Dans la base : ${fmtK(comptes.ok)} aliments sûrs, ${fmtK(comptes.a_verifier)} à vérifier, ${fmtK(comptes.exclu)} exclus${comptes.a_eviter ? `, ${fmtK(comptes.a_eviter)} à éviter` : ''} (profil seul).`) : null,
       nRepas !== null ? h('small', { class: 'muted block' }, `Bibliothèque : ${nRepas} repas complets sur ${REPAS.repas.length} tiennent toutes tes préférences.`) : null),
     carteFacon(p),
+    carteRepasPourToi(),
     h('section', { class: 'card' }, h('h3', null, 'Allergies et intolérances'),
       h('div', { class: 'chips', role: 'group', 'aria-label': 'Allergies et intolérances' }, [...ALLERG_UE(), ...INTOL()].map(t => {
         const on = p.allergies.includes(t), d = flagDef(t) || {};

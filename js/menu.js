@@ -100,6 +100,7 @@ function mnCreneaux(date, mode) {
 // Petit truc du matin : une collation, ou un petit-déjeuner de 350 kcal au plus
 const MN_PETIT_KCAL = 350;
 function mnPourCreneau(r, s, info) {
+  if (r.seul) return s.k === 'petit-dejeuner' && s.matin === 'petit' ? r.creneaux.includes('collation') || r.creneaux.includes('petit-dejeuner') : r.creneaux.includes(s.k);
   if (s.k !== 'petit-dejeuner' || s.matin !== 'petit') return r.creneau === s.k;
   return r.creneau === 'collation' || (r.creneau === 'petit-dejeuner' && info.get(r.id).kcal <= MN_PETIT_KCAL);
 }
@@ -155,6 +156,7 @@ function menuCalcule(date, mode = 'reste') {
   for (const s of ouverts) {
     let cands = [];
     for (const r of REPAS.repas) {
+      if (!!r.seul !== !!cx.p.seul) continue; // repas d'un seul aliment : seulement avec la préférence, et alors seuls eux
       if (!mnPourCreneau(r, s, info)) continue;
       const vr = verdictRepas(r, cx); if (vr.v === 'exclu') continue;
       nbOk++;
@@ -302,8 +304,8 @@ function mnDetail(o, opts = {}) {
     const kc = info.kcal * st.coef;
     const mic = MICROS_AVG.map(x => ({ x, part: tg[x[0]] > 0 ? (info.vec[K.keys.indexOf(x[0])] * st.coef) / tg[x[0]] : 0 })).sort((a, b) => b.part - a.part).slice(0, 6);
     fill(body,
-      h('small', { class: 'muted' }, `${(REPAS.meta.creneaux[m.creneau] || m.creneau)} · ${m.min} min · ${(REPAS.meta.cuisines[m.cuisine] || m.cuisine).toLowerCase()} · ${REPAS.meta.budget[m.budget] || m.budget}${m.cru ? ' · cru' : m.cuisson ? '' : ' · sans cuisson'}${m.shelton ? ' · bien combiné' : ''}${m.sport ? ' · riche en protéines' : ''}`),
-      m.nature !== 'recette de l\'assistant' ? h('small', { class: 'unk block' }, 'Plat composé de la source : valeurs calculées par Ciqual ou l\'OSAV pour le plat entier, recette moyenne.') : h('small', { class: 'muted block' }, 'Modèle de repas écrit par l\'assistant ; les valeurs viennent de la base d\'aliments.'),
+      h('small', { class: 'muted' }, `${(REPAS.meta.creneaux[m.creneau] || m.creneau)} · ${m.min} min · ${m.seul ? 'un seul aliment' : (REPAS.meta.cuisines[m.cuisine] || m.cuisine).toLowerCase()}${m.budget ? ' · ' + (REPAS.meta.budget[m.budget] || m.budget) : ''}${m.cru ? ' · cru' : m.cuisson ? '' : ' · sans cuisson'}${m.shelton ? ' · bien combiné' : ''}${m.sport ? ' · riche en protéines' : ''}`),
+      m.seul ? h('small', { class: 'muted block' }, 'Un seul aliment de la base : ses valeurs sont celles de l\'aliment, source dans sa fiche (ⓘ).') : m.nature !== 'recette de l\'assistant' ? h('small', { class: 'unk block' }, 'Plat composé de la source : valeurs calculées par Ciqual ou l\'OSAV pour le plat entier, recette moyenne.') : h('small', { class: 'muted block' }, 'Modèle de repas écrit par l\'assistant ; les valeurs viennent de la base d\'aliments.'),
       seg(MN_PORTIONS.map(([n, c]) => [String(c), `${n} · ${fmtK(info.kcal * c)} kcal`]), String(st.coef), v => { st.coef = +v; draw(); }),
       h('div', { class: 'list' }, m.ing.map(([id, g]) => { const f = foodById(id), v = cx.v(id), gg = Math.round(g * st.coef * 10) / 10; return h('div', { class: 'item' },
         h('div', { class: 'grow' }, f ? f.n : id, h('small', { class: 'muted' }, ` · ${f ? quantiteTexte(f, gg) : fmtNum(gg) + ' g'}`),
@@ -451,16 +453,16 @@ function mnJourneeModal() {
 }
 
 /* ---------- bibliothèque de repas complets (onglet Recettes) ---------- */
-const MN_BIB = { creneau: '', q: '', n: 20, exclus: false, cru: false, shelton: false };
+const MN_BIB = { creneau: '', q: '', n: 20, exclus: false, cru: false, shelton: false, seul: false };
 function vueBibliotheque() {
   if (!REPAS_OK() || !FLAGS_OK()) return h('section', { class: 'card' }, h('p', { class: 'neg' }, 'Bibliothèque de repas non chargée.'));
   const cx = prefsCtx(), info = mnRepasInfo(), q = motsPref(MN_BIB.q);
-  const tous = REPAS.repas.filter(m => (!MN_BIB.creneau || m.creneau === MN_BIB.creneau) && (!MN_BIB.cru || m.cru) && (!MN_BIB.shelton || m.shelton) && (!q.length || q.every(w => motsPref(m.nom).some(t => t.startsWith(w)))));
+  const tous = REPAS.repas.filter(m => (!MN_BIB.creneau || (m.seul ? m.creneaux.includes(MN_BIB.creneau) : m.creneau === MN_BIB.creneau)) && (!MN_BIB.cru || m.cru) && (!MN_BIB.shelton || m.shelton) && (!MN_BIB.seul || m.seul) && (!q.length || q.every(w => motsPref(m.nom).some(t => t.startsWith(w)))));
   const ok = tous.filter(m => verdictRepas(m, cx).v !== 'exclu'), list = (MN_BIB.exclus ? tous : ok).slice(0, MN_BIB.n);
   const list2 = h('div', { class: 'list' }, list.map(m => { const vr = verdictRepas(m, cx), mi = info.get(m.id), meal = MN_CRENEAUX.find(c => c.k === m.creneau).meal;
     const o = { m, vr, coef: 1, portion: 'normale', meal, slot: m.creneau, kcal: mi.kcal, p: mi.vec[mnKeys().iP], top: [], phrase: '' };
     return h('div', { class: `item${vr.v === 'exclu' ? ' dim' : ''}` }, h('div', { class: 'grow click', onclick: () => mnDetail(o), title: 'Voir les ingrédients' }, h('b', null, m.nom),
-      h('small', { class: 'muted' }, ` · ${meal.toLowerCase()}${m.cru ? ' · cru' : ''}${m.shelton ? ' · bien combiné' : ''} · ${m.min} min · ${fmtK(mi.kcal)} kcal · ${fmtG(o.p)} g prot.`),
+      h('small', { class: 'muted' }, ` · ${m.seul ? 'un seul aliment' : meal.toLowerCase()}${m.cru ? ' · cru' : ''}${m.shelton ? ' · bien combiné' : ''} · ${m.min} min · ${fmtK(mi.kcal)} kcal · ${fmtG(o.p)} g prot.`),
       vr.v === 'exclu' ? h('small', { class: 'neg block' }, `Exclu : ${vr.pourquoi.slice(0, 2).join(' ; ')}`) : vr.v === 'a_verifier' ? h('small', { class: 'unk block' }, `À vérifier : ${vr.doute.map(t => flagNom(t).toLowerCase()).join(', ')}`) : null),
       vr.v === 'exclu' ? null : h('button', { class: 'btn small', 'aria-label': `Je le mange : ${m.nom}`, onclick: () => mnManger(o) }, 'Je le mange'),
       h('button', { class: 'btn small ghost', 'aria-label': `Voir : ${m.nom}`, onclick: () => mnDetail(o) }, 'Voir')); }));
@@ -470,7 +472,8 @@ function vueBibliotheque() {
     h('div', { class: 'row wrap' }, inp('search', MN_BIB.q, { 'aria-label': 'Chercher un repas', placeholder: 'Chercher un repas (lentilles, saumon, rösti…)', oninput: e => { MN_BIB.q = e.target.value; MN_BIB.n = 20; rerender(); } }),
       h('label', { class: 'daybox' }, h('input', { type: 'checkbox', checked: MN_BIB.exclus, onchange: e => { MN_BIB.exclus = e.target.checked; rerender(); } }), 'Montrer aussi les exclus'),
       h('label', { class: 'daybox' }, h('input', { type: 'checkbox', checked: MN_BIB.cru, onchange: e => { MN_BIB.cru = e.target.checked; MN_BIB.n = 20; rerender(); } }), 'Cru seulement'),
-      h('label', { class: 'daybox' }, h('input', { type: 'checkbox', checked: MN_BIB.shelton, onchange: e => { MN_BIB.shelton = e.target.checked; MN_BIB.n = 20; rerender(); } }), 'Bien combiné')),
+      h('label', { class: 'daybox' }, h('input', { type: 'checkbox', checked: MN_BIB.shelton, onchange: e => { MN_BIB.shelton = e.target.checked; MN_BIB.n = 20; rerender(); } }), 'Bien combiné'),
+      h('label', { class: 'daybox' }, h('input', { type: 'checkbox', checked: MN_BIB.seul, onchange: e => { MN_BIB.seul = e.target.checked; MN_BIB.n = 20; rerender(); } }), 'Un seul aliment')),
     list2, (MN_BIB.exclus ? tous : ok).length > MN_BIB.n ? h('button', { class: 'btn small ghost', onclick: () => { MN_BIB.n += 40; rerender(); } }, `Voir plus (${(MN_BIB.exclus ? tous : ok).length - MN_BIB.n} de plus)`) : null,
     h('small', { class: 'unk block' }, REPAS.meta.avertissement));
 }
