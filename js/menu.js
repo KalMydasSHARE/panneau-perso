@@ -352,7 +352,7 @@ function mnLigne(o, d, compact) {
 // Proposition en une ligne : nom (la fiche s'ouvre d'un geste), calories, « Je le mange »
 function mnLigneCourte(o, d) {
   return h('div', { class: 'prop court' }, h('div', { class: 'grow' }, h('button', { class: 'prop-nom', onclick: () => mnDetail(o, { menu: true, date: d }), 'aria-label': `Voir les ingrédients : ${o.m.nom}` }, o.m.nom),
-    h('small', { class: 'muted' }, ` · ${fmtK(o.kcal)} kcal`)),
+    h('small', { class: 'muted block' }, `${mnPortionTxt(o)} · ${fmtK(o.kcal)} kcal`)),
     h('button', { class: 'btn small', 'aria-label': `Je le mange : ${o.m.nom}, ${mnPortionTxt(o).toLowerCase()}`, onclick: () => mnManger(o, d) }, 'Je le mange'));
 }
 // Explication honnête d'un micro qui reste bas malgré la meilleure combinaison (REPAS.md, section 4)

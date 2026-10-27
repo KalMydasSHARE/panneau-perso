@@ -323,7 +323,7 @@ function vuePreferences(root) {
   if (!FLAGS_OK() || !ARBRE_OK()) return put(root, h('section', { class: 'card' }, h('h3', null, 'Préférences'), h('p', { class: 'neg' }, `Données des régimes non chargées (${DONNEES_CHARGE.err.join(', ') || 'chargement en cours'}). Recharge la page.`)));
   const p = PR(), prof = profilDe(p.profil), cpt = comptesNoeuds(), A = arbreIx();
   const comptes = (FOODFLAGS.meta.profils_comptes || {})[prof ? prof.k : 'omnivore'];
-  const nRepas = REPAS_OK() ? REPAS.repas.filter(m => verdictRepas(m).v !== 'exclu').length : null;
+  const bibRepas = REPAS_OK() ? REPAS.repas.filter(m => !!m.seul === !!p.seul) : [], nRepas = REPAS_OK() ? bibRepas.filter(m => verdictRepas(m).v !== 'exclu').length : null;
   // saisie en clair
   const lu = PRF_UI.texte.trim() ? lirePreference(PRF_UI.texte) : null;
   const apercu = h('small', { class: 'muted block', 'aria-live': 'polite' }, !PRF_UI.texte.trim() ? 'Exemples : « pas de champignons », « j\'aime le saumon », « j\'évite le porc », « allergique aux arachides ».'
@@ -345,7 +345,7 @@ function vuePreferences(root) {
       })),
       h('p', { class: 'small' }, h('b', null, prof ? prof.l : 'Omnivore'), ` : ${(prof || profilDe('omnivore') || { def: '' }).def} `, h('small', { class: 'muted' }, `Source : ${(prof || profilDe('omnivore') || { source: '' }).source}.`)),
       comptes ? h('small', { class: 'muted block' }, `Dans la base : ${fmtK(comptes.ok)} aliments sûrs, ${fmtK(comptes.a_verifier)} à vérifier, ${fmtK(comptes.exclu)} exclus${comptes.a_eviter ? `, ${fmtK(comptes.a_eviter)} à éviter` : ''} (profil seul).`) : null,
-      nRepas !== null ? h('small', { class: 'muted block' }, `Bibliothèque : ${nRepas} repas complets sur ${REPAS.repas.length} tiennent toutes tes préférences.`) : null),
+      nRepas !== null ? h('small', { class: 'muted block' }, `Bibliothèque : ${nRepas} ${p.seul ? "repas d'un seul aliment" : "repas complets"} sur ${bibRepas.length} tiennent toutes tes préférences.`) : null),
     carteFacon(p),
     carteRepasPourToi(),
     h('section', { class: 'card' }, h('h3', null, 'Allergies et intolérances'),

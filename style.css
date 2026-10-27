@@ -405,3 +405,60 @@ b.e-ok{color:var(--pos)} b.e-eviter{color:var(--warn)} b.e-exclu{color:var(--neg
 .prop.court{flex-direction:row;align-items:center;gap:.5rem;padding:.4rem .6rem;background:transparent;border:1px solid var(--line)}
 .prop.court .prop-nom{font-weight:600}
 small.mn-jour{margin:.6rem 0 .2rem}
+
+/* ----- finition du 27 octobre 2026 (relecture UX et design sur téléphone) ----- */
+/* une seule police partout : les boutons prenaient Arial */
+button,.btn,.chip,select,input,textarea{font-family:inherit}
+a.btn{display:inline-flex;align-items:center;justify-content:center;line-height:1.2}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:.35rem;line-height:1.2;transition:background .15s,border-color .15s,transform .1s}
+.btn:active,.chip.pick:active,.seg button:active{transform:scale(.97)}
+/* chiffres alignés */
+.big,.huge,.stat .big,.right,.amt,.ring b{font-variant-numeric:tabular-nums}
+/* cartes : un peu d'air, titres posés */
+.card{padding:1.05rem 1.1rem;box-shadow:0 1px 0 rgba(255,255,255,.02) inset}
+.card h3{font-size:1.02rem}
+.item b{font-weight:620}
+.prop{padding:.75rem .8rem;gap:.4rem}
+.prop.first{border-color:#6b5718;background:linear-gradient(160deg,#1f1c11 0,var(--panel2) 70%)}
+
+@media (max-width:760px){
+  /* le bouton + ne cache plus le bas des pages */
+  .main{padding-bottom:calc(150px + env(safe-area-inset-bottom))}
+  /* boutons à la taille d'un doigt */
+  .btn{min-height:42px;padding:.55rem 1rem}
+  .btn.small{min-height:38px;padding:.45rem .85rem;font-size:.86rem}
+  button.chip.pick{min-height:36px;padding:.35rem .8rem;font-size:.86rem}
+  /* actions d'une proposition : une grille nette au lieu de boutons de tailles mêlées */
+  .prop-actions{display:grid;grid-template-columns:repeat(2,1fr);gap:.45rem}
+  .prop-actions .btn:last-child:nth-child(even){grid-column:1/-1}
+  .prop-actions .btn{width:100%;padding-left:.4rem;padding-right:.4rem}
+  .prop-actions .btn:first-child{grid-column:1/-1}
+  /* sélecteurs à onglets : une ligne qui défile, jamais deux rangées bancales */
+  .seg{display:flex;flex-wrap:nowrap;max-width:100%;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .seg::-webkit-scrollbar,.subtabs::-webkit-scrollbar{display:none}
+  .seg button,.seg a{flex:0 0 auto;white-space:nowrap;min-height:38px}
+  /* sous-onglets : un fondu à droite dit qu'il y en a d'autres */
+  .subtabs{-webkit-mask-image:linear-gradient(90deg,#000 85%,transparent);mask-image:linear-gradient(90deg,#000 85%,transparent);padding-right:1.5rem}
+  .subtabs a{padding:.7rem .8rem;font-size:.95rem}
+  /* barre du bas lisible, onglet actif marqué */
+  .nav{background:rgba(11,13,18,.94);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+  .nav a{font-size:.74rem;padding:.4rem .2rem;border-radius:12px;gap:.15rem;min-height:52px;justify-content:center}
+  .nav a i{font-size:1.15rem;width:auto}
+  .nav a.on{background:transparent;color:var(--gold2);font-weight:650}
+  .nav a.on i{color:var(--gold2)}
+  .nav a.on::after{content:"";display:block;width:18px;height:3px;border-radius:3px;background:var(--gold);margin-top:.1rem}
+  /* titre de carte et boutons sur la même ligne : les boutons passent dessous proprement */
+  .card > .row.between.wrap{row-gap:.5rem}
+  .card > .row.between.wrap > h3{margin-bottom:0}
+  .top{padding:.6rem 16px}
+}
+:root[data-theme=light] .nav{background:rgba(255,255,255,.94)}
+@media (prefers-color-scheme:light){:root:not([data-theme]) .nav{background:rgba(255,255,255,.94)}}
+:root[data-theme=light] .prop.first{background:linear-gradient(160deg,#fbf4dc 0,#fff 70%);border-color:#e0cf93}
+@media (prefers-color-scheme:light){:root:not([data-theme]) .prop.first{background:linear-gradient(160deg,#fbf4dc 0,#fff 70%);border-color:#e0cf93}}
+@media (max-width:760px){
+  /* boutons d'en-tête de carte : une rangée qui défile, plus fine que les actions */
+  .card > .row.between.wrap > .row.wrap{flex-wrap:nowrap;overflow-x:auto;max-width:100%;scrollbar-width:none;gap:.4rem}
+  .card > .row.between.wrap > .row.wrap::-webkit-scrollbar{display:none}
+  .card > .row.between.wrap > .row.wrap > .btn{flex:0 0 auto;min-height:36px;font-size:.84rem;padding:.35rem .75rem;white-space:nowrap}
+}
