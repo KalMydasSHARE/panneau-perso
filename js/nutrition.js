@@ -234,7 +234,8 @@ MODULES.nutri = {
 
 /* ----- journée ----- */
 const entryKcal = e => { const k = entryN(e).kcal; return k === undefined ? '?' : fmtK(k); };
-/* Journée : d'abord ce qui sert à noter (ajout, ce que j'ai mangé), puis les chiffres. Sur téléphone, le champ de recherche est dans le premier écran. */
+/* Journée, version sobre (31 octobre 2026) : le bilan, le menu, noter, ce que j'ai mangé, l'eau. Le reste (macros en détail, micros, compléments,
+   jeûne, quoi manger) est replié, un toucher l'ouvre et l'état est retenu. Un jeûne en cours reste visible. */
 function vueNJour(root) {
   const d = nDay, tg = targets(), t = dayTotals(d), entries = N().log[d] || [], mp = microPct(t, tg), frag = fragile(t), ul = ulAlerts(d);
   const unkMark = k => (t.unk[k] ? h('small', { class: 'unk', title: `Valeur inconnue pour ${t.unk[k]} aliment(s)` }, ' ?') : null);
@@ -245,34 +246,38 @@ function vueNJour(root) {
     !CIQUAL_OK() ? h('section', { class: 'card' }, h('p', { class: 'neg' }, `Base d'aliments non chargée (${CIQUAL_CHARGE.err || 'raison inconnue'}). Les repas notés ne comptent pas leurs valeurs. Recharge la page.`)) : null,
     ul.length ? h('section', { class: 'card alertcard' }, h('h3', null, 'Limite haute dépassée'), ul.map(a => h('p', { class: a.type === 'NS' ? 'unk' : 'neg' }, h('b', null, a.nom), ` : ${ulText(a)}.`, a.note ? h('small', { class: 'muted' }, ` ${a.note}`) : null)),
       h('small', { class: 'muted' }, 'Limites de l\'EFSA pour un adulte en bonne santé. Ce n\'est pas un avis médical : parles-en à ton médecin si cela se répète.')) : null,
-    d === today() && typeof menuCarte === 'function' ? menuCarte() : null,
     dayBand(t, tg, mp),
+    d === today() && typeof menuCarte === 'function' ? menuCarte({ compact: true }) : null,
     addPanel(d),
     eatenCard(d, entries),
     d === today() && typeof rsvEncart === 'function' ? rsvEncart() : null,
-    h('div', { class: 'cols' },
+    waterCard(d),
+    N().fast ? fastingCard() : null,
+    plateBar(d),
+    t.miss ? h('p', { class: 'neg small' }, `${t.miss} repas pointe(nt) vers un aliment introuvable : il ne compte pas.`) : null,
+    foldCard('n.macros', 'Calories et macros', () => [
       h('section', { class: 'card' }, h('div', { class: 'row between' },
         h('div', null, h('h3', null, 'Calories et macros'), h('div', { class: 'big' }, fmtK(t.kcal), t.unk.kcal ? h('span', { class: 'unk' }, ' ?') : null, h('small', { class: 'muted' }, ` / ${fmtK(tg.kcal)} kcal`)), h('small', { class: 'muted' }, t.kcal < tg.kcal ? `reste ${fmtK(tg.kcal - t.kcal)} kcal` : `${fmtK(t.kcal - tg.kcal)} kcal au-dessus`)),
         ring((t.kcal / tg.kcal) * 100, fmtPct((t.kcal / tg.kcal) * 100, 0))),
         t.unk.kcal ? h('p', { class: 'unk small' }, `${t.unk.kcal} aliment(s) sans énergie publiée (${fmtK(t.unkG.kcal)} g) : pas comptés, le vrai total est plus haut.`) : null,
         bar('p', 'Protéines'), bar('c', 'Glucides'), bar('f', 'Lipides'), bar('fib', 'Fibres'),
-        limit('sat', 'AG saturés'), limit('salt', 'Sel'), h('small', { class: 'muted' }, `Sucres : ${fmtG(t.sug)} g`, unkMark('sug')), detailsBox(t)),
-      h('section', { class: 'card gold' }, h('div', { class: 'row between' }, h('div', null, h('h3', null, 'Micronutriments'), h('p', { class: 'muted' }, 'Part moyenne de tes repères couverte aujourd\'hui. Touche un micro pour voir où le trouver.')),
-        ring(mp, fmtPct(mp, 0), 'micros')), microLows(t, tg),
-        quick ? h('small', { class: 'muted' }, `${quick} saisie(s) rapide(s) sans micros : elles ne comptent que pour les calories et macros.`) : null)),
-    plateBar(d),
-    frag.length ? h('section', { class: 'card' }, h('h3', null, 'À lire avec prudence'), h('p', { class: 'muted small' }, 'Ces totaux reposent en bonne part sur des valeurs inconnues ou douteuses. Les chiffres affichés sont alors trop bas ou incertains.'),
-      h('div', { class: 'chips' }, frag.map(x => h('span', { class: `chip ${x.unk ? '' : 'bad'}`, title: x.why }, `${x.label} : ${x.why}`)))) : null,
-    t.miss ? h('p', { class: 'neg small' }, `${t.miss} repas pointe(nt) vers un aliment introuvable : il ne compte pas.`) : null,
-    h('div', { class: 'cols3' }, waterCard(d), supplementsCard(d, ul), fastingCard()),
-    foldCard('n.micros', 'Tous les micronutriments', () => microGrid(t, tg)),
+        limit('sat', 'AG saturés'), limit('salt', 'Sel'), h('small', { class: 'muted' }, `Sucres : ${fmtG(t.sug)} g`, unkMark('sug')), detailsBox(t))], { cls: 'vue-plus' }),
+    foldCard('n.micros', `Micronutriments · ${fmtPct(mp, 0)}`, () => [
+      h('section', { class: 'card' }, h('p', { class: 'muted small' }, 'Part moyenne de tes repères couverte aujourd\'hui. Touche un micro pour voir où le trouver.'), microLows(t, tg),
+        quick ? h('small', { class: 'muted' }, `${quick} saisie(s) rapide(s) sans micros : elles ne comptent que pour les calories et macros.`) : null,
+        frag.length ? h('details', { class: 'more' }, h('summary', null, 'À lire avec prudence'), h('p', { class: 'muted small' }, 'Ces totaux reposent en bonne part sur des valeurs inconnues ou douteuses. Les chiffres affichés sont alors trop bas ou incertains.'),
+          h('div', { class: 'chips' }, frag.map(x => h('span', { class: `chip ${x.unk ? '' : 'bad'}`, title: x.why }, `${x.label} : ${x.why}`)))) : null,
+        h('details', { class: 'more' }, h('summary', null, 'Tous les micronutriments'), microGrid(t, tg)))], { cls: 'vue-plus' }),
+    foldCard('n.supps', 'Compléments', () => [supplementsCard(d, ul)], { cls: 'vue-plus' }),
+    N().fast ? null : foldCard('n.jeune', 'Jeûne', () => [fastingCard()], { cls: 'vue-plus' }),
     suggestPanel(t, tg, entries.length > 0));
 }
 // Bande compacte en haut : calories, macros, micros d'un coup d'œil
 function dayBand(t, tg, mp) {
   return h('section', { class: 'card band' }, h('div', { class: 'row between wrap' },
     h('div', null, h('b', { class: 'big' }, fmtK(t.kcal)), t.unk.kcal ? h('span', { class: 'unk', title: 'Une partie des aliments n\'a pas d\'énergie publiée' }, ' ?') : null, h('small', { class: 'muted' }, ` / ${fmtK(tg.kcal)} kcal`)),
-    h('small', { class: 'muted' }, `Protéines ${fmtG(t.p)} / ${fmtG(tg.p)} g · glucides ${fmtG(t.c)} g · lipides ${fmtG(t.f)} g · micros ${fmtPct(mp, 0)}`)),
+    h('small', { class: 'muted' }, `Protéines ${fmtG(t.p)} / ${fmtG(tg.p)} g · micros ${fmtPct(mp, 0)}`)),
+  t.unk.kcal ? h('small', { class: 'unk block' }, `${t.unk.kcal} aliment(s) sans énergie publiée : le vrai total est plus haut.`) : null, // reste visible, même calories repliées
   progress((t.kcal / tg.kcal) * 100, t.kcal > tg.kcal * 1.1 ? 'warn' : 'gold'));
 }
 // Ce que j'ai mangé, par repas, avec « Copier vers… » et la suppression qui s'annule
@@ -282,8 +287,9 @@ function eatenCard(d, entries) {
     entries.length ? MEALS.map(m => {
       const es = entries.filter(e => e.meal === m), unk = es.some(e => !e.n && entryN(e).kcal === undefined);
       return es.length ? h('div', { class: 'group' }, h('div', { class: 'row between wrap' }, h('small', { class: 'muted up' }, `${m} · ${fmtK(sum(es, e => entryN(e).kcal || 0))}${unk ? ' + ?' : ''} kcal`),
-        h('div', { class: 'row' }, h('button', { class: 'btn small ghost', onclick: () => copyTo(d, m, es) }, 'Copier vers…'), h('button', { class: 'btn small ghost', onclick: () => saveAsRecipe(es, m) }, 'En faire une recette'))),
-      es.map(e => { const f = e.food ? foodById(e.food) : null; return h('div', { class: 'item' }, h('div', { class: `grow${f ? ' click' : ''}`, onclick: f ? () => foodSheet(f, e.g) : null, title: f ? 'Voir la fiche' : null }, e.name, h('small', { class: 'muted' }, e.n ? ' · saisie rapide' : ` · ${f ? quantiteTexte(f, e.g) : fmtNum(e.g) + ' g'}${f ? ' · ' + foodSrc(f) : ''}`)), h('div', { class: 'right' }, `${entryKcal(e)} kcal`),
+        h('details', { class: 'gestes' }, h('summary', { 'aria-label': `Autres gestes pour le ${m.toLowerCase()}`, title: 'Copier, en faire une recette' }, '⋯'),
+          h('div', { class: 'row' }, h('button', { class: 'btn small ghost', onclick: () => copyTo(d, m, es) }, 'Copier vers…'), h('button', { class: 'btn small ghost', onclick: () => saveAsRecipe(es, m) }, 'En faire une recette')))),
+      es.map(e => { const f = e.food ? foodById(e.food) : null; return h('div', { class: 'item' }, h('div', { class: `grow${f ? ' click' : ''}`, onclick: f ? () => foodSheet(f, e.g) : null, title: f ? 'Voir la fiche' : null }, e.name, h('small', { class: 'muted' }, e.n ? ' · saisie rapide' : ` · ${f ? quantiteTexte(f, e.g) : fmtNum(e.g) + ' g'}`)), h('div', { class: 'right' }, `${entryKcal(e)} kcal`),
         h('button', { class: 'icon', 'aria-label': `Changer la quantité de ${e.name}`, onclick: () => editEntry(d, e) }, '✎'),
         h('button', { class: 'icon', 'aria-label': `Retirer ${e.name}`, onclick: () => removeEntry(d, e) }, '×')); })) : null; })
       : h('div', { class: 'empty' }, 'Rien de noté ce jour.'));
@@ -339,7 +345,7 @@ function addWater(d, ml) {
 function waterCard(d) {
   const ml = N().water[d] || 0, tgt = waterTarget(), tot = waterOf(d), fw = tot - ml, r = drvRef('eau'), gl = glassMl();
   return h('section', { class: 'card' }, h('h3', null, 'Eau'), h('div', { class: 'big' }, `${fmtNum(tot / 1000)} `, h('small', { class: 'muted' }, `/ ${fmtNum(tgt / 1000)} L`)), progress((tot / tgt) * 100, tot >= tgt ? 'ok' : ''),
-    h('small', { class: 'muted' }, waterTotalMode() ? `Bu ${fmtNum(ml / 1000)} L + eau des aliments notés ${fmtNum(fw / 1000)} L. Repère ${r ? DRV_SRC[r.s] : ''} : eau totale, boissons et aliments.`
+    h('small', { class: 'muted' }, waterTotalMode() ? `Bu ${fmtNum(ml / 1000)} L + ${fmtNum(fw / 1000)} L dans les aliments`
       : DRV_OK() ? 'Boissons seules. Repère DGE/ÖGE : boissons, sans l\'eau des aliments.' : 'Repère de secours : 35 ml par kg.'),
     h('div', { class: 'row wrap', style: { marginTop: '.6rem' } }, h('button', { class: 'btn small', onclick: () => addWater(d, gl) }, `+ 1 verre (${gl} ml)`), h('button', { class: 'btn small ghost', onclick: () => addWater(d, 500) }, '+ 500 ml'),
       ml > 0 ? h('button', { class: 'btn small ghost', 'aria-label': `Retirer ${gl} ml`, onclick: () => addWater(d, -Math.min(gl, ml)) }, `− ${gl}`) : null));
@@ -451,7 +457,7 @@ function addPanel(d) {
     const nq = ADD.q.trim();
     list = nq && !ADD.pick ? searchFoods(nq) : [];
     const info = nq && searchFoods.info ? searchFoods.info : {};
-    if (!nq) return fill(res, recent.length ? h('small', { class: 'muted' }, hab.length ? `Habituel à cette heure (${ADD.meal.toLowerCase()}) : + ajoute la dernière quantité` : 'Récents : + ajoute la dernière quantité') : null,
+    if (!nq) return fill(res, recent.length ? h('small', { class: 'muted' }, hab.length ? `Habituel au ${ADD.meal.toLowerCase()}` : 'Récents') : null,
       recent.length ? h('div', { class: 'tiles' }, recent.map(f => { const g = defaultG(f); return h('div', { class: 'tile' },
         h('button', { class: 'tile-name', onclick: () => choose(f), title: f.n }, h('span', null, shortName(f.n)), h('small', { class: 'muted' }, quantiteTexte(f, g))),
         h('button', { class: 'tile-add', 'aria-label': `Ajouter ${f.n}, ${fmtNum(g)} g, au ${ADD.meal.toLowerCase()}`, onclick: () => addNow(f, g) }, '+')); })) : null);

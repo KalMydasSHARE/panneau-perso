@@ -495,21 +495,21 @@ details.arbre-pli:not([open])>summary::after{transform:rotate(-90deg)}
   --bg:#06070d; --panel:rgba(255,255,255,.07); --panel2:rgba(255,255,255,.07); --line:rgba(255,255,255,.13);
   --fill:rgba(255,255,255,.07); --fill-on:rgba(255,255,255,.17); --edge:rgba(255,255,255,.12); --hi:rgba(255,255,255,.07);
   --glass:rgba(22,24,32,.62); --glass-strong:rgba(26,28,37,.84); --shadow:0 10px 30px rgba(0,0,0,.35); --shadow-s:0 2px 10px rgba(0,0,0,.22);
-  --blob1:rgba(140,95,15,.45); --blob2:rgba(35,55,170,.50); --blob3:rgba(95,35,150,.42); --mut:#b4bccd; --neg:#ff8a8a;
+  --blob1:rgba(140,95,15,.28); --blob2:rgba(35,55,170,.34); --blob3:rgba(95,35,150,.26); --mut:#b4bccd; --neg:#ff8a8a;
   --r:22px; --ease:cubic-bezier(.2,.8,.2,1);
 }
 :root[data-theme=light]{
   --bg:#e9ecf4; --warn:#7a4800; --mut:#465063; --gold:#7a5900; --gold2:#634800; --neg:#b42525; --panel:rgba(255,255,255,.58); --panel2:rgba(30,40,70,.045); --line:rgba(30,40,70,.10);
   --fill:rgba(255,255,255,.75); --fill-on:#fff; --edge:rgba(255,255,255,.85); --hi:rgba(255,255,255,.9);
   --glass:rgba(250,251,253,.70); --glass-strong:rgba(252,252,254,.90); --shadow:0 10px 30px rgba(30,40,70,.10); --shadow-s:0 2px 10px rgba(30,40,70,.07);
-  --blob1:rgba(250,205,110,.50); --blob2:rgba(140,170,255,.45); --blob3:rgba(215,160,245,.40);
+  --blob1:rgba(250,205,110,.34); --blob2:rgba(140,170,255,.32); --blob3:rgba(215,160,245,.26);
 }
 @media (prefers-color-scheme:light){
   :root:not([data-theme=dark]):not([data-theme=light]){
     --bg:#e9ecf4; --warn:#7a4800; --mut:#465063; --gold:#7a5900; --gold2:#634800; --neg:#b42525; --panel:rgba(255,255,255,.58); --panel2:rgba(30,40,70,.045); --line:rgba(30,40,70,.10);
     --fill:rgba(255,255,255,.75); --fill-on:#fff; --edge:rgba(255,255,255,.85); --hi:rgba(255,255,255,.9);
     --glass:rgba(250,251,253,.70); --glass-strong:rgba(252,252,254,.90); --shadow:0 10px 30px rgba(30,40,70,.10); --shadow-s:0 2px 10px rgba(30,40,70,.07);
-    --blob1:rgba(250,205,110,.50); --blob2:rgba(140,170,255,.45); --blob3:rgba(215,160,245,.40);
+    --blob1:rgba(250,205,110,.34); --blob2:rgba(140,170,255,.32); --blob3:rgba(215,160,245,.26);
   }
 }
 /* fond : trois taches de couleur très douces, fixes (pseudo-élément : iOS ignore background-attachment:fixed) */
@@ -646,3 +646,14 @@ kbd{background:var(--fill)}
 details.vue-plus>summary{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:.85rem 1.1rem;box-shadow:inset 0 1px 0 var(--hi),var(--shadow-s);backdrop-filter:blur(18px) saturate(160%);-webkit-backdrop-filter:blur(18px) saturate(160%)}
 details.vue-plus>summary h3{font-size:1rem}
 details.vue-plus[open]>summary{margin-bottom:.8rem}
+
+/* ----- version sobre (31 octobre 2026) : moins de texte, replis du même dessin ----- */
+.vue-plus > .card > h3:first-child,.vue-plus > .card > .row:first-child > h3{display:none} /* le titre est déjà sur le repli */
+.vue-plus > .card > .row:first-child:has(> h3:only-child){display:none}
+.view > details.vue-plus + details.vue-plus{margin-top:-.35rem}
+details.gestes{position:relative}
+details.gestes>summary{list-style:none;cursor:pointer;min-width:40px;min-height:36px;display:grid;place-items:center;border-radius:12px;color:var(--mut);font-size:1.2rem;line-height:1}
+details.gestes>summary::-webkit-details-marker{display:none}
+details.gestes[open]>summary{background:var(--fill)}
+details.gestes>.row{margin-top:.4rem;flex-wrap:wrap;justify-content:flex-end}
+.group > .row.between.wrap:has(details.gestes[open]){align-items:flex-start}

@@ -353,7 +353,7 @@ function mnLigne(o, d, compact) {
   return h('div', { class: 'prop first' },
     h('div', { class: 'prop-head' }, h('button', { class: 'prop-nom', onclick: () => mnDetail(o, { menu: true, date: d }), 'aria-label': `Voir les ingrédients : ${o.m.nom}` }, h('b', null, o.m.nom)),
       h('small', { class: 'muted block' }, `${mnPortionTxt(o)} · ${fmtK(o.kcal)} kcal · ${fmtG(o.p)} g de protéines · ${o.m.min} min`)),
-    h('small', { class: 'why' }, o.phrase),
+    compact ? null : h('small', { class: 'why' }, o.phrase),
     h('div', { class: 'chips' }, o.top.map(x => h('span', { class: 'chip ok', title: x.inconnu ? 'Au moins : un ingrédient n\'a pas de valeur publiée' : 'Part de ton repère du jour' }, `${MICROS.find(m => m[0] === x.k)[1]} ${x.part > 3 ? (x.inconnu ? 'au moins 300 %' : 'plus de 300 %') : (x.inconnu ? 'au moins ' : '') + mnPct(x.part)}`)),
       vr.v === 'a_verifier' ? h('span', { class: 'chip unk', title: FOODFLAGS.meta.avertissement }, `à vérifier : ${vr.doute.map(t => flagNom(t).toLowerCase()).join(', ')}`) : null,
       vr.aime ? h('span', { class: 'chip ok' }, 'avec ce que tu aimes') : null, vr.v === 'eviter' ? h('span', { class: 'chip' }, 'contient un aliment à éviter') : null),
@@ -418,7 +418,7 @@ function menuCarte({ compact = false } = {}) {
   };
   if (compact) {
     const s = ouverts[0], suite = ouverts.slice(1).map(x => x.meal.toLowerCase());
-    return h('section', { class: 'card menu-card' }, head, budget, choixMatin, slotBloc(s, true),
+    return h('section', { class: 'card menu-card' }, head, choixMatin, slotBloc(s, true), // version courte : ni phrase du budget ni explication, le détail est dans « Voir »
       h('div', { class: 'row wrap' }, h('a', { class: 'btn small ghost', href: '#/nutri/jour' }, suite.length ? `Ensuite : ${mnListe(suite)}` : 'Voir la journée')));
   }
   return h('section', { class: 'card menu-card' }, head, budget, choixMatin,
