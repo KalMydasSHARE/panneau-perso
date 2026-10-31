@@ -195,13 +195,16 @@ MODULES.home = {
     const hbs = activeHabits().filter(x => scheduled(x, td) && !isSkipped(x, td)), done = hbs.filter(x => isDone(x, td)).length, wk = rate(activeHabits(), addDays(td, -6), td);
     const nd = nutriDay(td), al = alerts(), best = activeHabits().map(hb => ({ hb, s: streak(hb) })).sort((x, y) => y.s - x.s)[0], f = N().fast;
     const wo = P().workouts.filter(x => x.date >= weekStart(td)).reduce((a, x) => a + x.min, 0), ah = activeHabits(), force = ah.length ? sum(ah, x => strength(x)) / ah.length : null;
+    // Panneau court (31 octobre 2026) : en haut, seulement ce qui se fait maintenant ; les chiffres d'ensemble sont repliés (état retenu)
     put(root,
       h('h2', null, `Bonjour Kal, ${dateLabel(td)}`),
       quickBar(),
-      typeof menuCarte === 'function' ? menuCarte({ compact: true }) : null, // menu du jour : la prochaine proposition, « Je le mange » en un geste
+      maintenantCard(td, al),
       backupNag(),
+      typeof menuCarte === 'function' ? menuCarte({ compact: true }) : null, // menu du jour : la prochaine proposition, « Je le mange » en un geste
       todayHabitsCard(td),
-      al.length ? h('section', { class: 'card' }, h('h3', null, 'À regarder'), h('div', { class: 'list' }, al.map(([c, t, href]) => h('a', { class: `item alert ${c}`, href }, h('span', { class: 'grow' }, t), h('span', null, '›'))))) : h('section', { class: 'card' }, h('p', { class: 'pos' }, "Rien d'urgent. Tout est à jour.")),
+      foldCard('home-vue', "Vue d'ensemble", () => [vueEnsemble()], { cls: 'vue-plus' }));
+    function vueEnsemble() { return h('div', { class: 'view' },
       h('div', { class: 'grid4' },
         h('button', { class: 'card stat click', onclick: () => disciplineModal(td), 'aria-label': 'Discipline du jour : voir le calcul' }, h('small', null, 'Discipline du jour'), h('div', { class: 'big' }, discTxt(disciplineDay(td))), h('small', { class: 'muted' }, disciplineDay(td) === null ? 'rien de prévu aujourd\'hui' : 'toucher pour le calcul')),
         stat('Discipline 7 jours', discTxt(disciplineWeek(last7))),
@@ -220,9 +223,23 @@ MODULES.home = {
           h('small', null, 'Calories du jour'), h('div', { class: 'huge' }, nd ? fmtK(nd.t.kcal) : '–', h('small', { class: 'muted' }, ` / ${fmtK(targets().kcal)}`)),
           h('div', { class: 'mini-grid' }, h('div', null, h('small', null, 'Micros'), h('b', null, nd ? fmtPct(nd.micro, 0) : '–')), h('div', null, h('small', null, 'Protéines'), h('b', null, nd ? `${fmtG(nd.t.p)} g` : '–')),
             h('div', null, h('small', null, 'Eau'), h('b', null, `${fmtNum(waterOf(td) / 1000)} L`)), h('div', null, h('small', null, 'Jeûne'), h('b', null, f ? `${Math.floor((Date.now() - f.start) / 3600000)} h` : '–'))))),
-      h('p', { class: 'muted' }, "Chiffré sur cet appareil. Le bouton ◐ en haut masque les montants si quelqu'un regarde ton écran."));
+      h('p', { class: 'muted' }, "Chiffré sur cet appareil. Le bouton ◐ en haut masque les montants si quelqu'un regarde ton écran.")); }
   }
 };
+/* « Maintenant » : les tâches du jour et en retard (priorité d'abord, trois au plus) et les alertes (urgentes d'abord, trois au plus, le reste replié).
+   Rien de tout ça : une ligne qui le dit. */
+function maintenantCard(td, al) {
+  const prio = t => t.prio || 2;
+  const tasks = P().tasks.filter(t => !t.done && t.due && t.due <= td).sort((a, b) => prio(a) - prio(b) || (a.due < b.due ? -1 : a.due > b.due ? 1 : 0) || (a.hh || '99').localeCompare(b.hh || '99'));
+  const alerts = al.filter(a => !(tasks.length && a[2] === '#/plan/taches')).sort((a, b) => (a[0] === 'bad' ? 0 : 1) - (b[0] === 'bad' ? 0 : 1));
+  if (!tasks.length && !alerts.length) return h('section', { class: 'card maintenant' }, h('p', { class: 'pos' }, "Rien d'urgent. Tout est à jour."));
+  const ligne = ([c, t, href]) => h('a', { class: `item alert ${c}`, href }, h('span', { class: 'grow' }, t), h('span', null, '›'));
+  return h('section', { class: 'card maintenant' }, h('h3', null, 'Maintenant'),
+    tasks.length ? h('div', { class: 'list' }, tasks.slice(0, 3).map(t => taskRow(t, { later: true, auj: true })),
+      tasks.length > 3 ? h('a', { class: 'small muted', href: '#/plan/taches' }, `+ ${tasks.length - 3} autre(s) tâche(s) ›`) : null) : null,
+    alerts.length ? h('div', { class: 'list' }, alerts.slice(0, 3).map(ligne)) : null,
+    alerts.length > 3 ? h('details', { class: 'more' }, h('summary', null, `${alerts.length - 3} autre(s) point(s) à regarder`), h('div', { class: 'list' }, alerts.slice(3).map(ligne))) : null);
+}
 
 /* ---------- reglages ---------- */
 function downloadCSV(name, rows) {

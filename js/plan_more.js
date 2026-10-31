@@ -121,7 +121,7 @@ function taskRow(t, opts = {}) {
   const late = !t.done && t.due && t.due < today(), subDone = (t.sub || []).filter(s => s.done).length;
   return h('div', { class: `check ${t.done ? 'done' : ''}`, onclick: e => { if (!e.target.closest('button,input,a')) completeTaskU(t); } }, h('input', { type: 'checkbox', checked: t.done, 'aria-label': t.title, onchange: () => completeTaskU(t) }),
     h('span', { class: 'grow' }, h('span', { class: `prio${t.prio || 2}` }, t.prio === 1 ? '● ' : ''), t.title,
-      t.due ? h('small', { class: late ? 'neg' : 'muted' }, late ? ` en retard depuis le ${shortDate(t.due)}` : ` pour le ${shortDate(t.due)}`) : '', t.hh ? h('small', { class: 'muted' }, ` à ${t.hh}`) : '', t.min ? h('small', { class: 'muted' }, ` · ${dureeTxt(t.min)}`) : '',
+      t.due && !(opts.auj && t.due === today()) ? h('small', { class: late ? 'neg' : 'muted' }, late ? ` en retard depuis le ${shortDate(t.due)}` : ` pour le ${shortDate(t.due)}`) : '', // auj : sur le Panneau, « pour aujourd'hui » va de soi t.hh ? h('small', { class: 'muted' }, ` à ${t.hh}`) : '', t.min ? h('small', { class: 'muted' }, ` · ${dureeTxt(t.min)}`) : '',
       t.rec ? h('span', { class: 'tag' }, { d: 'chaque jour', w: 'chaque semaine', m: 'chaque mois' }[t.rec]) : '',
       (t.sub || []).length ? h('small', { class: 'muted' }, ` · ${subDone}/${t.sub.length}`) : '', t.focus ? h('small', { class: 'muted' }, ` · ${t.focus} min de focus`) : '', t.goal && P().goals.find(g => g.id === t.goal) ? h('span', { class: 'tag' }, P().goals.find(g => g.id === t.goal).title) : ''),
     opts.later && !t.done ? h('button', { class: 'btn small ghost', 'aria-label': `Reporter ${t.title} à demain`, onclick: () => postpone(t) }, 'Demain') : null,

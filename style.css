@@ -638,3 +638,11 @@ kbd{background:var(--fill)}
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
   .top,.nav,.modal,.toast,.reminder,.plate-bar,.muscu-clock{background:var(--bg)}
 }
+
+/* ----- Panneau court (31 octobre 2026) ----- */
+.maintenant .list + .list{margin-top:.6rem}
+.maintenant .alert{margin-bottom:0}
+.maintenant > .list > a.small{padding:.3rem .2rem}
+details.vue-plus>summary{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:.85rem 1.1rem;box-shadow:inset 0 1px 0 var(--hi),var(--shadow-s);backdrop-filter:blur(18px) saturate(160%);-webkit-backdrop-filter:blur(18px) saturate(160%)}
+details.vue-plus>summary h3{font-size:1rem}
+details.vue-plus[open]>summary{margin-bottom:.8rem}
