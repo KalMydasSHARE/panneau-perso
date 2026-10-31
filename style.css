@@ -487,3 +487,152 @@ details.arbre-pli:not([open])>summary::after{transform:rotate(-90deg)}
 @media (max-width:760px){
   .card > .row.between.wrap > .row.wrap{-webkit-mask-image:linear-gradient(90deg,#000 82%,transparent);mask-image:linear-gradient(90deg,#000 82%,transparent);padding-right:1.2rem}
 }
+
+/* ----- verre façon iOS (31 octobre 2026) -----
+   Surfaces translucides sur un fond doux. Le flou d'arrière-plan va seulement à ce qui flotte (barre du haut, barre du bas, fenêtres, messages) :
+   les cartes ne recouvrent rien, un flou n'y changerait rien et coûterait sur téléphone. Contrastes mesurés sur le fond réel (_captures/CONTRASTES.md). */
+:root{
+  --bg:#07080c; --panel:rgba(255,255,255,.055); --panel2:rgba(255,255,255,.065); --line:rgba(255,255,255,.10);
+  --fill:rgba(255,255,255,.07); --fill-on:rgba(255,255,255,.17); --edge:rgba(255,255,255,.12); --hi:rgba(255,255,255,.07);
+  --glass:rgba(22,24,32,.62); --glass-strong:rgba(26,28,37,.84); --shadow:0 10px 30px rgba(0,0,0,.35); --shadow-s:0 2px 10px rgba(0,0,0,.22);
+  --blob1:rgba(212,175,55,.16); --blob2:rgba(70,115,210,.20); --blob3:rgba(40,170,140,.11);
+  --r:22px; --ease:cubic-bezier(.2,.8,.2,1);
+}
+:root[data-theme=light]{
+  --bg:#eef0f5; --warn:#8a5200; --panel:rgba(255,255,255,.66); --panel2:rgba(30,40,70,.045); --line:rgba(30,40,70,.10);
+  --fill:rgba(255,255,255,.75); --fill-on:#fff; --edge:rgba(255,255,255,.85); --hi:rgba(255,255,255,.9);
+  --glass:rgba(250,251,253,.70); --glass-strong:rgba(252,252,254,.90); --shadow:0 10px 30px rgba(30,40,70,.10); --shadow-s:0 2px 10px rgba(30,40,70,.07);
+  --blob1:rgba(230,195,90,.20); --blob2:rgba(120,160,240,.20); --blob3:rgba(110,210,180,.14);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme=dark]):not([data-theme=light]){
+    --bg:#eef0f5; --warn:#8a5200; --panel:rgba(255,255,255,.66); --panel2:rgba(30,40,70,.045); --line:rgba(30,40,70,.10);
+    --fill:rgba(255,255,255,.75); --fill-on:#fff; --edge:rgba(255,255,255,.85); --hi:rgba(255,255,255,.9);
+    --glass:rgba(250,251,253,.70); --glass-strong:rgba(252,252,254,.90); --shadow:0 10px 30px rgba(30,40,70,.10); --shadow-s:0 2px 10px rgba(30,40,70,.07);
+    --blob1:rgba(230,195,90,.20); --blob2:rgba(120,160,240,.20); --blob3:rgba(110,210,180,.14);
+  }
+}
+/* fond : trois taches de couleur très douces, fixes (pseudo-élément : iOS ignore background-attachment:fixed) */
+body{background:var(--bg);-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:radial-gradient(60% 45% at 12% 0%,var(--blob1),transparent 70%),radial-gradient(55% 45% at 100% 30%,var(--blob2),transparent 70%),radial-gradient(60% 50% at 30% 100%,var(--blob3),transparent 70%)}
+/* titres : grands titres serrés ; titres de carte dans la couleur du texte, l'or reste aux gestes et à l'onglet actif */
+h2{font-size:1.7rem;font-weight:720;letter-spacing:-.022em;line-height:1.15}
+h3{color:var(--txt);font-weight:660;letter-spacing:-.01em}
+.card h3{font-size:1.06rem}
+.huge{letter-spacing:-.02em} .big,.stat .big{letter-spacing:-.015em}
+
+/* surfaces */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:inset 0 1px 0 var(--hi),var(--shadow-s)}
+a.card:hover,button.card.stat:hover{border-color:var(--edge)}
+.card.gold{background:linear-gradient(160deg,rgba(212,175,55,.13) 0,var(--panel) 65%);border-color:rgba(212,175,55,.30)}
+.menu-card,.add-card{border-color:rgba(212,175,55,.26)}
+.card.alertcard{border-color:rgba(255,107,107,.40)} .rsv-encart{border-color:rgba(245,165,36,.40)}
+.prop{background:var(--panel2);border-radius:16px}
+.prop.first{background:linear-gradient(160deg,rgba(212,175,55,.12) 0,var(--panel2) 70%);border:1px solid rgba(212,175,55,.30)}
+.prop.court{background:transparent}
+.micro,.redo-line,.chip-row,.daybox,.cite{border-radius:14px}
+.alert{border-radius:14px;background:var(--panel2);border-color:var(--line)}
+.alert.bad{border-color:rgba(255,107,107,.40)} .alert.warn{border-color:rgba(245,165,36,.40)}
+.empty{border-radius:16px}
+.bloc.total{border-radius:16px;border-color:rgba(212,175,55,.30)}
+.exo,.tile,.pick-line,.imp-table{border-radius:14px}
+
+/* barre du haut et menu de côté : verre */
+.top{background:var(--glass);backdrop-filter:blur(24px) saturate(170%);-webkit-backdrop-filter:blur(24px) saturate(170%);border-bottom:1px solid var(--line)}
+.nav a{border-radius:12px;transition:background .2s,color .2s}
+.nav a.on{background:var(--fill-on);color:var(--txt);box-shadow:var(--shadow-s)}
+.nav a:hover:not(.on){background:var(--fill)}
+
+/* sous-onglets : pilules au lieu d'un trait */
+.subtabs{border-bottom:0;gap:.25rem;padding:.15rem 0}
+.subtabs a{border:0;border-radius:999px;padding:.5rem .95rem;transition:background .2s,color .2s}
+.subtabs a.on{background:var(--fill-on);color:var(--txt);font-weight:650;box-shadow:var(--shadow-s)}
+/* sélecteurs à onglets : curseur clair façon iOS */
+.seg{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:3px}
+.seg button,.seg a{border-radius:11px;transition:background .2s,color .2s}
+.seg button.on,.seg a.on{background:var(--fill-on);color:var(--txt);font-weight:650;box-shadow:var(--shadow-s)}
+:root[data-theme=light] .seg button.on,:root[data-theme=light] .seg a.on{color:var(--txt)}
+@media (prefers-color-scheme:light){:root:not([data-theme]) .seg button.on,:root:not([data-theme]) .seg a.on{color:var(--txt)}}
+
+/* boutons : capsules */
+.btn{border-radius:999px;padding:.55rem 1.1rem;transition:background .2s,border-color .2s,transform .12s var(--ease),box-shadow .2s}
+.btn:not(.ghost):not(.danger){box-shadow:0 4px 14px rgba(212,175,55,.22)}
+.btn.ghost{background:var(--fill);border:1px solid var(--line);box-shadow:inset 0 1px 0 var(--hi)}
+.btn.ghost:hover{border-color:var(--edge);background:var(--fill-on)}
+.btn.danger{background:rgba(255,107,107,.08);border-color:rgba(255,107,107,.35)}
+.btn:active,.quick-btn:active,.tile-add:active,.fab:active{transform:scale(.96)}
+.icon{border-radius:12px;transition:background .2s,color .2s}
+.icon:hover{background:var(--fill)}
+.chip{background:var(--fill);border-color:var(--line)}
+.chip.ok{border-color:rgba(62,207,142,.40)} .chip.bad{border-color:rgba(255,107,107,.40)} .chip.unk{border-color:rgba(245,165,36,.40)}
+button.chip.pick.sel{background:var(--gold);border-color:var(--gold)}
+.quick-btn{background:var(--panel);border-color:var(--line);border-radius:18px;box-shadow:inset 0 1px 0 var(--hi),var(--shadow-s);transition:transform .12s var(--ease),border-color .2s}
+.tag{background:var(--fill)}
+.toast-btn{border-radius:999px}
+
+/* champs */
+input,select,textarea{background:var(--fill);border-color:var(--line);border-radius:12px;transition:border-color .2s,box-shadow .2s}
+input:focus,select:focus,textarea:focus{outline:0;border-color:var(--gold);box-shadow:0 0 0 3px rgba(212,175,55,.25)}
+.cell,.rate button,.face,.etat,.set-ok,.count-val{background:var(--fill);border-color:var(--line)}
+.cell{border-radius:10px} .rate button,.face{border-radius:14px}
+.cell.on{background:var(--gold);border-color:var(--gold)} .cell.miss{border-color:rgba(255,107,107,.45)}
+.rate button.on,.face.on{background:var(--gold);border-color:var(--gold)}
+.set-ok.on{background:var(--pos);border-color:var(--pos)}
+.etat.on.e-ok{background:var(--pos);border-color:var(--pos)} .etat.on.e-eviter{background:var(--warn);border-color:var(--warn)}
+.etat.on.e-exclu{background:var(--neg);border-color:var(--neg)} .etat.on.e-aime{background:var(--gold);border-color:var(--gold)}
+kbd{background:var(--fill)}
+
+/* fenêtres, messages, rappels : verre épais et entrée douce */
+.overlay{background:rgba(0,0,0,.38);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);animation:kmp-fondu .2s var(--ease)}
+.modal{background:var(--glass-strong);backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%);border:1px solid var(--edge);border-radius:28px;box-shadow:0 24px 60px rgba(0,0,0,.35);animation:kmp-monte .26s var(--ease)}
+.muscu-clock{background:var(--glass-strong);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+.toast,.reminder,.plate-bar{background:var(--glass-strong);backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);border:1px solid var(--edge);box-shadow:var(--shadow)}
+.toast{border-radius:18px;animation:kmp-toast .26s var(--ease);transition:opacity .4s,transform .4s} .toast.out{transform:translateX(-50%) translateY(8px)}
+.reminder,.plate-bar{border-radius:20px}
+@keyframes kmp-fondu{from{opacity:0}to{opacity:1}}
+@keyframes kmp-monte{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes kmp-toast{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%)}}
+:root[data-theme=light] .overlay{background:rgba(20,25,40,.22)}
+:root[data-theme=light] .modal{box-shadow:0 24px 60px rgba(30,40,70,.18)}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]) .overlay{background:rgba(20,25,40,.22)}
+  :root:not([data-theme]) .modal{box-shadow:0 24px 60px rgba(30,40,70,.18)}
+}
+/* clair : teintes dorées un peu plus marquées sur fond clair */
+:root[data-theme=light] .card.gold,:root[data-theme=light] .prop.first{background:linear-gradient(160deg,rgba(240,205,110,.30) 0,var(--panel) 65%);border-color:rgba(160,120,20,.28)}
+:root[data-theme=light] .menu-card,:root[data-theme=light] .add-card,:root[data-theme=light] .bloc.total{border-color:rgba(160,120,20,.28)}
+:root[data-theme=light] .btn:not(.ghost):not(.danger){box-shadow:0 4px 14px rgba(138,101,0,.25)}
+/* note choisie (Séance, Humeur) : texte blanc sur l'or foncé du thème clair, comme les autres boutons dorés (3,4 avant, revue du 31 octobre) */
+:root[data-theme=light] .rate button.on{color:#fff}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]) .card.gold,:root:not([data-theme]) .prop.first{background:linear-gradient(160deg,rgba(240,205,110,.30) 0,var(--panel) 65%);border-color:rgba(160,120,20,.28)}
+  :root:not([data-theme]) .menu-card,:root:not([data-theme]) .add-card,:root:not([data-theme]) .bloc.total{border-color:rgba(160,120,20,.28)}
+  :root:not([data-theme]) .btn:not(.ghost):not(.danger){box-shadow:0 4px 14px rgba(138,101,0,.25)}
+  :root:not([data-theme]) .rate button.on{color:#fff}
+}
+
+@media (max-width:760px){
+  .top{padding:.55rem 16px}
+  /* barre du bas : une capsule de verre qui flotte au-dessus du contenu */
+  .shell{padding-bottom:0}
+  .nav{left:10px;right:10px;bottom:calc(8px + env(safe-area-inset-bottom));padding:.3rem;border:1px solid var(--edge);border-radius:28px;
+    background:var(--glass);backdrop-filter:blur(26px) saturate(180%);-webkit-backdrop-filter:blur(26px) saturate(180%);box-shadow:var(--shadow)}
+  .nav a{border-radius:22px;min-height:54px;font-size:.7rem;white-space:nowrap;padding:.4rem .1rem;letter-spacing:-.005em}
+  .nav a.on{background:var(--fill-on);color:var(--txt);box-shadow:var(--shadow-s)}
+  .nav a.on i{color:var(--gold2)}
+  .nav a.on::after{display:none}
+  .fab{bottom:calc(88px + env(safe-area-inset-bottom));box-shadow:0 8px 24px rgba(212,175,55,.35),inset 0 1px 0 rgba(255,255,255,.35)}
+  .toast{bottom:calc(96px + env(safe-area-inset-bottom))}
+  .plate-bar{bottom:calc(86px + env(safe-area-inset-bottom))}
+  .overlay.sheet .modal{border-radius:28px 28px 0 0;animation-name:kmp-feuille}
+  .subtabs a{padding:.55rem .9rem}
+  h2{font-size:1.38rem}
+}
+@keyframes kmp-feuille{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
+:root[data-theme=light] .nav{background:var(--glass)}
+@media (prefers-color-scheme:light){:root:not([data-theme]) .nav{background:var(--glass)}}
+/* sans flou possible : surfaces opaques, le texte reste lisible */
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  .top,.nav,.modal,.toast,.reminder,.plate-bar,.muscu-clock{background:var(--bg)}
+}
