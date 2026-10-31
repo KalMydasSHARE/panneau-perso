@@ -178,7 +178,9 @@ function alerts() {
   if (due.length) out.push(['bad', `À faire maintenant : ${due.map(x => x.name).slice(0, 3).join(', ')}`, '#/plan/jour']);
   const rel = people_due(); if (rel.length) out.push(['warn', `À relancer : ${rel.slice(0, 3).map(p => p.name).join(', ')}`, '#/plan/social']);
   const nd = nutriDay(td);
-  if (!nd) out.push(['warn', "Aucun repas noté aujourd'hui", '#/nutri/jour']);
+  // fenêtre de repas (jeûne) : ne rien manger avant la fin de la fenêtre est voulu, pas un oubli
+  const fen = N().menu.rythme === 'fenetre' ? N().menu.fenetre : null, finFen = fen ? Math.min(24, fen.de + fen.h) : 0;
+  if (!nd && !(fen && now.getHours() < finFen)) out.push(['warn', "Aucun repas noté aujourd'hui", '#/nutri/jour']);
   else if (nd.micro < 60) out.push(['warn', `Micros à ${fmtPct(nd.micro, 0)} aujourd'hui`, '#/nutri/jour']);
   if (waterOf(td) < waterTarget() * 0.5 && now.getHours() >= 15) out.push(['warn', `Eau : ${fmtNum(waterOf(td) / 1000)} L sur ${fmtNum(waterTarget() / 1000)}`, '#/nutri/jour']);
   for (const a of ulAlerts(td)) out.push([a.type === 'NS' ? 'warn' : 'bad', `${a.nom} : ${ulText(a)}`, '#/nutri/jour']);

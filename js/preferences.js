@@ -289,7 +289,8 @@ function carteFacon(p) {
       chip('cru', 'Cru', n(m => m.cru), 'Aucune cuisson, chaque ingrédient cru. Coché : le menu et la bibliothèque ne proposent que ces repas.'),
       chip('shelton', 'Bien combiné (Shelton)', n(m => m.shelton), 'Jamais un féculent avec une protéine, un fruit acide ou du sucre, une seule protéine, les fruits sans légumes, melon et lait seuls. Règles de naturopathie, pas un consensus médical.'),
       chip('seul', 'Un seul aliment', n(m => m.seul), 'Un fruit, un légume, un fromage, une viande… seul. Coché : le menu ne propose que des repas d\'un seul aliment.')),
-    h('small', { class: 'muted block' }, `Cru et bien combiné ensemble : ${n(m => m.cru && m.shelton)} repas.`));
+    h('small', { class: 'muted block' }, `Cru et bien combiné ensemble : ${n(m => m.cru && m.shelton)} repas.`),
+    typeof rythmeReglage === 'function' ? rythmeReglage() : null); // jeûne : un ou deux repas dans une fenêtre d'heures
 }
 // Repas pour toi (27 octobre 2026) : ce que tes choix donnent, tout de suite. Ce que tu aimes passe devant, puis un ordre fixe du jour qui mélange.
 const PRF_POUR = { n: 0, moment: '' }; // 0 : la taille de départ (5 sur téléphone, 8 sinon)

@@ -288,7 +288,7 @@ function defaultState() {
     },
     nutri: { targets: null, foods: [], log: {}, lastG: {}, water: {}, supps: [], supLog: {}, recipes: [], weights: [], fast: null, fasts: [], plan: {}, shop: {},
       prefs: defaultPrefs(), // préférences alimentaires (js/preferences.js)
-      menu: { maxMin: 40, sansCuisson: false, matin: 'petit' }, // menu du jour : temps de préparation voulu, au plus (5, 10, 20 ou 40 min) ; matin : un petit truc d'abord, ou un repas
+      menu: { maxMin: 40, sansCuisson: false, matin: 'petit', rythme: 'jour', fenetre: { de: 17, h: 6, repas: 1 } }, // menu du jour : temps de préparation voulu, au plus (5, 10, 20 ou 40 min) ; matin : un petit truc d'abord, ou un repas ; rythme : 'jour' (quatre créneaux) ou 'fenetre' (un ou deux repas entre fenetre.de et fenetre.de + fenetre.h)
       reserveDepart: 'vide' } // réserves : 'vide' (on ne compte que le suivi) ou 'plein' (état de départ normal, prise de sang récente)
   };
 }
@@ -318,6 +318,8 @@ function migrate(s) {
   s.nutri.menu = { ...d.nutri.menu, ...(s.nutri.menu && typeof s.nutri.menu === 'object' ? s.nutri.menu : {}) };
   if (![5, 10, 20, 40].includes(s.nutri.menu.maxMin)) s.nutri.menu.maxMin = 40;
   if (s.nutri.menu.matin !== 'repas') s.nutri.menu.matin = 'petit';
+  if (s.nutri.menu.rythme !== 'fenetre') s.nutri.menu.rythme = 'jour';
+  { const f = s.nutri.menu.fenetre && typeof s.nutri.menu.fenetre === 'object' ? s.nutri.menu.fenetre : {}; s.nutri.menu.fenetre = { de: [10, 11, 12, 13, 14, 15, 16, 17, 18].includes(f.de) ? f.de : 17, h: [4, 6, 8].includes(f.h) ? f.h : 6, repas: f.repas === 2 ? 2 : 1 }; }
   delete s.nutri.menu.cru; // « Cru » vit dans les préférences depuis le 26 octobre 2026
   if (s.nutri.reserveDepart !== 'plein') s.nutri.reserveDepart = 'vide';
   // ancien réglage d'activité 1,4 absent de la liste : la liste affichait « sédentaire » alors que le calcul prenait 1,4. On prend le niveau le plus proche.

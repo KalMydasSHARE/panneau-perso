@@ -14,6 +14,16 @@ const MN_CRENEAUX = [
   { k: 'collation', meal: 'Collation', de: 15, a: 18.5, part: 0.10, facultatif: true },
   { k: 'diner', meal: 'Dîner', de: 17, a: 24, part: 0.30 }
 ];
+/* Fenêtre de repas (jeûne intermittent, 31 octobre 2026) : un ou deux repas dans une plage d'heures choisie, au lieu des quatre créneaux.
+   Deux repas : le premier pioche dans les déjeuners, le dernier dans les dîners ; chacun porte une grosse part du budget du jour. */
+const MN_FENETRE_DEBUTS = [10, 11, 12, 13, 14, 15, 16, 17, 18], MN_FENETRE_DUREES = [4, 6, 8];
+function mnFenetre() {
+  const f = N().menu.fenetre || {}, de = MN_FENETRE_DEBUTS.includes(f.de) ? f.de : 17, a = Math.min(24, de + (MN_FENETRE_DUREES.includes(f.h) ? f.h : 6));
+  if (f.repas === 2) { const mi = de + (a - de) / 2;
+    return [{ k: 'dejeuner', meal: 'Déjeuner', label: 'Premier repas', de, a: mi, part: 0.45 }, { k: 'diner', meal: 'Dîner', label: 'Dernier repas', de: mi, a, part: 0.55 }]; }
+  return [{ k: 'diner', meal: 'Dîner', label: 'Ton repas', de, a, part: 1 }];
+}
+const mnCreneauxBase = () => (N().menu.rythme === 'fenetre' ? mnFenetre() : MN_CRENEAUX);
 const MN_PORTIONS = [['petite', 0.75], ['normale', 1], ['grande', 1.35]];
 const MN_TEMPS = [5, 10, 20, 40];
 const MN_SESSION = { autres: {}, matinEncore: null }; // matinEncore : « petit » ou « repas » après un premier petit truc // « Autre proposition » : repas passés pour la journée, en mémoire seulement
@@ -80,12 +90,17 @@ function complementsHabituels(date) {
 
 /* ---------- état des créneaux ---------- */
 function mnCreneaux(date, mode) {
-  if (mode === 'journee') return MN_CRENEAUX.map(c => ({ ...c, etat: 'ouvert' }));
+  if (mode === 'journee') return mnCreneauxBase().map(c => ({ ...c, etat: 'ouvert' }));
   const now = new Date(), hNow = date === today() ? now.getHours() + now.getMinutes() / 60 : date < today() ? 99 : 0;
   const eaten = new Set((N().log[date] || []).map(e => e.meal)), plan = N().plan[date] || [];
   const f = N().fast, finJeune = f ? f.start + f.goal * 3600000 : 0;
-  return MN_CRENEAUX.map(c => {
+  const fenetre = N().menu.rythme === 'fenetre';
+  return mnCreneauxBase().map(c => {
     const fin = parseD(date).getTime() + c.a * 3600000;
+    // fenêtre pas encore ouverte : le repas est proposé, avec l'heure où le jeûne finit
+    if (fenetre) { const debut = parseD(date).getTime() + c.de * 3600000, etat = eaten.has(c.meal) ? 'mange' : plan.some(e => e.meal === c.meal) ? 'prevu' : hNow >= c.a ? 'passe' : 'ouvert';
+      const attend = etat === 'ouvert' ? Math.max(date === today() && debut > now.getTime() ? debut : 0, finJeune > now.getTime() ? finJeune : 0) : 0;
+      return { ...c, etat, apresJeune: attend }; }
     const etat = eaten.has(c.meal) ? 'mange' : plan.some(e => e.meal === c.meal) ? 'prevu' : hNow >= c.a ? 'passe' : finJeune > now.getTime() && fin <= finJeune ? 'jeune' : 'ouvert';
     // le matin : un petit truc d'abord ; après lui, encore un petit truc ou un repas, au choix (26 octobre 2026)
     if (c.k === 'petit-dejeuner') {
@@ -395,8 +410,8 @@ function menuCarte({ compact = false } = {}) {
   // propositions d'un créneau : la première complète, les deux suivantes en une ligne ; replié : la première en une ligne
   const slotBloc = (s, plein) => {
     const skip = MN_SESSION.autres[`${td}|${s.k}`], list = s.rang.filter(o => !skip || !skip.has(o.m.id)).slice(0, compact ? 1 : 3);
-    return h('div', { class: 'mn-slot' }, h('div', { class: 'row between wrap' }, h('h4', null, s.k === 'petit-dejeuner' && s.matin === 'petit' ? (s.encore ? 'Encore un petit truc' : 'Un petit truc pour commencer') : s.encore ? 'Petit-déjeuner' : s.meal),
-      h('small', { class: 'muted' }, s.apresJeune ? `après ton jeûne (fin à ${hm(s.apresJeune)})` : s.facultatif ? (s.saute ? 'facultative : ton budget tient sans elle' : 'facultative') : '')),
+    return h('div', { class: 'mn-slot' }, h('div', { class: 'row between wrap' }, h('h4', null, s.label || (s.k === 'petit-dejeuner' && s.matin === 'petit' ? (s.encore ? 'Encore un petit truc' : 'Un petit truc pour commencer') : s.encore ? 'Petit-déjeuner' : s.meal)),
+      h('small', { class: 'muted' }, s.apresJeune ? `après ton jeûne (fin à ${hm(s.apresJeune)})` : s.label ? `entre ${s.de} h et ${Math.round(s.a)} h` : s.facultatif ? (s.saute ? 'facultative : ton budget tient sans elle' : 'facultative') : '')),
       !s.rang.length ? h('p', { class: 'unk small' }, s.nbCandidats === 0 ? `Aucun repas de la bibliothèque ne tient tes préférences et ton temps (${N().menu.maxMin} min au plus) pour ce créneau.` : 'Rien à proposer.')
         : !list.length ? h('p', { class: 'small muted' }, 'Tu as passé toutes les propositions. ', h('button', { class: 'btn small ghost', onclick: () => { delete MN_SESSION.autres[`${td}|${s.k}`]; rerender(); } }, 'Revoir les premières')) : null,
       list.length ? (plein ? [mnLigne(list[0], td, compact), list.slice(1).map(o => mnLigneCourte(o, td))] : mnLigneCourte(list[0], td)) : null);
@@ -416,7 +431,8 @@ function menuCarte({ compact = false } = {}) {
     h('details', { class: 'more' }, h('summary', null, 'Détail de la journée et réglages du menu'), mnResumeJour(res),
       h('div', { class: 'row wrap' }, h('small', { class: 'muted' }, 'Temps de préparation :'), seg(MN_TEMPS.map(t => [String(t), `${t} min`]), String(N().menu.maxMin || 40), v => { const r = garde(N(), 'menu'); N().menu = { ...N().menu, maxMin: +v }; save(); rerender(); undoable(`Temps de préparation : ${v} min au plus`, r); }),
         h('label', { class: 'daybox' }, h('input', { type: 'checkbox', checked: !!N().menu.sansCuisson, onchange: e => { N().menu = { ...N().menu, sansCuisson: e.target.checked }; save(); rerender(); } }), 'Sans cuisson'),
-        h('small', { class: 'muted' }, 'Le matin :'), seg([['petit', 'Un petit truc d\'abord'], ['repas', 'Un repas']], N().menu.matin || 'petit', v => { const r = garde(N(), 'menu'); N().menu = { ...N().menu, matin: v }; save(); rerender(); undoable(v === 'petit' ? 'Le matin : un petit truc d\'abord' : 'Le matin : un repas', r); })),
+        N().menu.rythme === 'fenetre' ? null : [h('small', { class: 'muted' }, 'Le matin :'), seg([['petit', 'Un petit truc d\'abord'], ['repas', 'Un repas']], N().menu.matin || 'petit', v => { const r = garde(N(), 'menu'); N().menu = { ...N().menu, matin: v }; save(); rerender(); undoable(v === 'petit' ? 'Le matin : un petit truc d\'abord' : 'Le matin : un repas', r); })]),
+      rythmeReglage(),
       h('small', { class: 'muted block' }, 'Estimations faites avec la base d\'aliments et des modèles de repas écrits par l\'assistant : ce n\'est pas un avis médical. En cas d\'allergie grave, lis toujours l\'étiquette.')));
 }
 function mnPrevuLigne(s, d) {
@@ -434,7 +450,7 @@ function mnJourneeModal() {
     const sup = complementsHabituels(d), nsup = Object.keys(sup).length;
     fill(body, seg([[td, 'Aujourd\'hui'], [addDays(td, 1), 'Demain']], d, v => { d = v; draw(); }),
       d === td && !rienAuj ? h('small', { class: 'unk block' }, 'Tu as déjà noté ou prévu des repas aujourd\'hui : cette journée repart de zéro. Le menu du jour, lui, tient compte de ce qui est noté.') : null,
-      res.slots.map(s => { const o = s.rang[0]; return h('div', { class: 'redo-line' }, h('div', { class: 'grow' }, h('small', { class: 'muted' }, `${s.meal} · `), o ? h('b', null, o.m.nom) : (s.facultatif ? 'pas de collation' : 'rien qui tienne tes préférences'),
+      res.slots.map(s => { const o = s.rang[0]; return h('div', { class: 'redo-line' }, h('div', { class: 'grow' }, h('small', { class: 'muted' }, `${s.label || s.meal} · `), o ? h('b', null, o.m.nom) : (s.facultatif ? 'pas de collation' : 'rien qui tienne tes préférences'),
         o ? h('small', { class: 'muted' }, ` · ${o.portion} · ${fmtK(o.kcal)} kcal`) : null, s.saute && o ? h('small', { class: 'muted' }, ' (facultative)') : null),
         o ? h('button', { class: 'btn small ghost', 'aria-label': `Voir : ${o.m.nom}`, onclick: () => mnDetail(o, { date: d }) }, 'Voir') : null); }),
       h('p', { class: 'small' }, h('b', null, `Couverture attendue : ${mnPct(res.jour.cov)}`), ` des repères de micros en moyenne, ${res.jour.nb90} sur ${res.jour.nMic} à 90 % ou plus ; ${fmtK(res.jour.kcal)} kcal sur ${fmtK(res.budget.tk)}, ${fmtG(res.jour.p)} g de protéines sur ${fmtG(res.budget.tp)}.`),
@@ -476,4 +492,20 @@ function vueBibliotheque() {
       h('label', { class: 'daybox' }, h('input', { type: 'checkbox', checked: MN_BIB.seul, onchange: e => { MN_BIB.seul = e.target.checked; MN_BIB.n = 20; rerender(); } }), 'Un seul aliment')),
     list2, (MN_BIB.exclus ? tous : ok).length > MN_BIB.n ? h('button', { class: 'btn small ghost', onclick: () => { MN_BIB.n += 40; rerender(); } }, `Voir plus (${(MN_BIB.exclus ? tous : ok).length - MN_BIB.n} de plus)`) : null,
     h('small', { class: 'unk block' }, REPAS.meta.avertissement));
+}
+
+/* Rythme des repas : quatre créneaux sur la journée, ou une fenêtre de repas (un ou deux repas). Dans le détail du menu et dans Préférences. */
+function rythmeReglage() {
+  const m = N().menu, fen = { de: 17, h: 6, repas: 1, ...(m.fenetre || {}) };
+  const pose = (v, msg) => { const r = garde(N(), 'menu'); N().menu = { ...N().menu, ...v }; save(); rerender(); undoable(msg, r); };
+  const fin = x => Math.min(24, x.de + x.h);
+  return h('div', { class: 'form tight rythme' },
+    h('div', { class: 'row wrap' }, h('small', { class: 'muted' }, 'Mes repas :'), seg([['jour', 'Sur la journée'], ['fenetre', 'Fenêtre de repas (jeûne)']], m.rythme === 'fenetre' ? 'fenetre' : 'jour',
+      v => pose({ rythme: v, fenetre: fen }, v === 'fenetre' ? `Fenêtre de repas : ${fen.repas === 2 ? 'deux repas' : 'un repas'} entre ${fen.de} h et ${fin(fen)} h` : 'Repas sur la journée'))),
+    m.rythme === 'fenetre' ? h('div', { class: 'row wrap' },
+      seg([['1', 'Un repas'], ['2', 'Deux repas']], String(fen.repas === 2 ? 2 : 1), v => pose({ fenetre: { ...fen, repas: +v } }, v === '2' ? 'Deux repas dans la fenêtre' : 'Un repas dans la fenêtre')),
+      h('label', { class: 'field' }, h('span', null, 'Début'), h('select', { 'aria-label': 'Début de la fenêtre de repas', onchange: e => pose({ fenetre: { ...fen, de: +e.target.value } }, `Fenêtre de repas : dès ${e.target.value} h`) },
+        MN_FENETRE_DEBUTS.map(x => h('option', { value: x, selected: x === fen.de }, `${x} h`)))),
+      h('label', { class: 'field' }, h('span', null, 'Durée'), h('select', { 'aria-label': 'Durée de la fenêtre de repas', onchange: e => pose({ fenetre: { ...fen, h: +e.target.value } }, `Fenêtre de repas : ${e.target.value} h`) },
+        MN_FENETRE_DUREES.map(x => h('option', { value: x, selected: x === fen.h }, `${x} h`))))) : null);
 }
