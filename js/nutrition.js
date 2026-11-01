@@ -260,19 +260,17 @@ function jourBlocs(d, x) {
   const { t, tg, mp, entries, quick, frag, ul, bar, limit, unkMark } = x || {};
   const tgR = d === today() && tg ? targetsReserve(tg) : null, tgM = tgR || tg; // aujourd'hui : ce que la réserve couvre déjà ne se redemande pas
   return [
-    ['bilan', 'Bilan du jour', () => dayBand(t, tg, microPct(t, tgM))],
+    // bilan du haut : un toucher ouvre les calories et macros en détail, dans la même carte (1er novembre 2026)
+    ['bilan', 'Bilan du jour (calories et macros)', () => dayBand(t, tg, microPct(t, tgM), () => [
+      h('div', { class: 'row between' }, h('small', { class: 'muted' }, t.kcal < tg.kcal ? `Reste ${fmtK(tg.kcal - t.kcal)} kcal` : `${fmtK(t.kcal - tg.kcal)} kcal au-dessus`), ring((t.kcal / tg.kcal) * 100, fmtPct((t.kcal / tg.kcal) * 100, 0))),
+      t.unk.kcal ? h('p', { class: 'unk small' }, `${t.unk.kcal} aliment(s) sans énergie publiée (${fmtK(t.unkG.kcal)} g) : pas comptés, le vrai total est plus haut.`) : null,
+      bar('p', 'Protéines'), bar('c', 'Glucides'), bar('f', 'Lipides'), bar('fib', 'Fibres'),
+      limit('sat', 'AG saturés'), limit('salt', 'Sel'), h('small', { class: 'muted' }, `Sucres : ${fmtG(t.sug)} g`, unkMark('sug')), detailsBox(t)])],
     ['menu', 'Menu du jour', () => (d === today() && typeof menuCarte === 'function' ? menuCarte({ compact: true }) : null)],
     ['ajouter', 'Ajouter un repas', () => addPanel(d)],
     ['mange', 'Ce que j\'ai mangé', () => eatenCard(d, entries)],
     ['reserves', 'À remplacer aujourd\'hui (réserves)', () => (d === today() && typeof rsvEncart === 'function' ? rsvEncart() : null)],
     ['eau', 'Eau', () => waterCard(d)],
-    ['macros', 'Calories et macros', () => foldCard('n.macros', 'Calories et macros', () => [
-      h('section', { class: 'card' }, h('div', { class: 'row between' },
-        h('div', null, h('h3', null, 'Calories et macros'), h('div', { class: 'big' }, fmtK(t.kcal), t.unk.kcal ? h('span', { class: 'unk' }, ' ?') : null, h('small', { class: 'muted' }, ` / ${fmtK(tg.kcal)} kcal`)), h('small', { class: 'muted' }, t.kcal < tg.kcal ? `reste ${fmtK(tg.kcal - t.kcal)} kcal` : `${fmtK(t.kcal - tg.kcal)} kcal au-dessus`)),
-        ring((t.kcal / tg.kcal) * 100, fmtPct((t.kcal / tg.kcal) * 100, 0))),
-        t.unk.kcal ? h('p', { class: 'unk small' }, `${t.unk.kcal} aliment(s) sans énergie publiée (${fmtK(t.unkG.kcal)} g) : pas comptés, le vrai total est plus haut.`) : null,
-        bar('p', 'Protéines'), bar('c', 'Glucides'), bar('f', 'Lipides'), bar('fib', 'Fibres'),
-        limit('sat', 'AG saturés'), limit('salt', 'Sel'), h('small', { class: 'muted' }, `Sucres : ${fmtG(t.sug)} g`, unkMark('sug')), detailsBox(t))], { cls: 'vue-plus' })],
     ['micros', 'Micronutriments', () => foldCard('n.micros', `Micronutriments · ${fmtPct(microPct(t, tgM), 0)}`, () => [
       h('section', { class: 'card' }, h('p', { class: 'muted small' }, tgR ? 'Part du besoin d\'aujourd\'hui couverte. Ce que ta réserve estimée couvre déjà ne compte plus comme besoin (Réserves). Touche un micro pour voir où le trouver.' : 'Part moyenne de tes repères couverte ce jour. Touche un micro pour voir où le trouver.'),
         microLows(t, tgM, tgR ? tg : null),
@@ -309,12 +307,18 @@ function effacerJour(d, quoi = 'tout') {
   save(); rerender(); undoable(`${dateLabel(d)} effacé`, rs);
 }
 // Bande compacte en haut : calories, macros, micros d'un coup d'œil
-function dayBand(t, tg, mp) {
-  return h('section', { class: 'card band' }, h('div', { class: 'row between wrap' },
+// Bande du haut : calories, macros, micros d'un coup d'œil ; un toucher ouvre le détail des calories et macros (état retenu)
+function dayBand(t, tg, mp, detail) {
+  const st = STATE.settings.fold || (STATE.settings.fold = {}), ouvert = !!st['n.bilan'];
+  const tete = [h('div', { class: 'row between wrap' },
     h('div', null, h('b', { class: 'big' }, fmtK(t.kcal)), t.unk.kcal ? h('span', { class: 'unk', title: 'Une partie des aliments n\'a pas d\'énergie publiée' }, ' ?') : null, h('small', { class: 'muted' }, ` / ${fmtK(tg.kcal)} kcal`)),
     h('small', { class: 'muted' }, `Protéines ${fmtG(t.p)} / ${fmtG(tg.p)} g · micros ${fmtPct(mp, 0)}`)),
-  t.unk.kcal ? h('small', { class: 'unk block' }, `${t.unk.kcal} aliment(s) sans énergie publiée : le vrai total est plus haut.`) : null, // reste visible, même calories repliées
-  progress((t.kcal / tg.kcal) * 100, t.kcal > tg.kcal * 1.1 ? 'warn' : 'gold'));
+  !ouvert && t.unk.kcal ? h('small', { class: 'unk block' }, `${t.unk.kcal} aliment(s) sans énergie publiée : le vrai total est plus haut.`) : null,
+  progress((t.kcal / tg.kcal) * 100, t.kcal > tg.kcal * 1.1 ? 'warn' : 'gold')];
+  if (!detail) return h('section', { class: 'card band' }, tete);
+  return h('details', { class: 'card band', open: ouvert, ontoggle: e => { const v = e.currentTarget.open; if (!!st['n.bilan'] !== v) { st['n.bilan'] = v; save(); rerender(); } } },
+    h('summary', { 'aria-label': 'Calories et macros : voir le détail' }, tete, h('small', { class: 'muted block band-plus' }, ouvert ? 'Replier' : 'Calories et macros en détail ▾')),
+    ouvert ? h('div', { class: 'band-detail' }, detail()) : null);
 }
 // Ce que j'ai mangé, par repas, avec « Copier vers… » et la suppression qui s'annule
 function eatenCard(d, entries) {

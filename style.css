@@ -698,3 +698,8 @@ details.autres .row{margin-top:.45rem}
 .nom-prix .prix-tag{margin-left:0;flex:0 0 auto}
 :root[data-theme=light] .prix-tag{color:#7a5a00;background:rgba(240,205,110,.30);border-color:rgba(160,120,20,.35)}
 @media (prefers-color-scheme:light){:root:not([data-theme]) .prix-tag{color:#7a5a00;background:rgba(240,205,110,.30);border-color:rgba(160,120,20,.35)}}
+/* bilan du haut qui s'ouvre sur les calories et macros (1er novembre 2026) */
+details.band>summary{list-style:none;cursor:pointer;display:block}
+details.band>summary::-webkit-details-marker{display:none}
+.band-plus{margin-top:.45rem;text-align:center}
+.band-detail{margin-top:.8rem;border-top:1px solid var(--line);padding-top:.8rem}
