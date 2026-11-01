@@ -363,6 +363,15 @@ function detailsBox(t) {
     h('small', { class: 'muted' }, 'Sans repère quand aucune des sources lues n\'en donne un. Sel et sodium viennent parfois d\'analyses différentes : le panneau suit le sel.'));
 }
 function suggestPanel(t, tg, any) {
+  // des repas de la bibliothèque (js/menu.js) quand elle est là ; les aliments seuls restent en secours
+  const rs = any && typeof mnCombler === 'function' ? mnCombler() : null;
+  if (rs) return foldCard('n.suggest', 'Quoi manger pour combler', () => [
+    !rs.length ? h('div', { class: 'empty' }, 'Ce qui est noté couvre déjà tes besoins du jour. Rien à rattraper.') :
+    h('div', { class: 'list' }, rs.map(o => h('div', { class: 'item' }, h('div', { class: 'grow click', onclick: () => mnDetail(o, { menu: false }) }, h('b', null, o.m.nom), ' ', mnPrixTag(mnItems(o.m, o.coef), 'petit'),
+      h('small', { class: 'muted block' }, `${o.meal} · ${mnPortionTxt(o)} · ${fmtK(o.kcal)} kcal`),
+      h('div', { class: 'chips' }, o.parts.map(p => h('span', { class: 'chip ok' }, `${MICROS.find(m => m[0] === p.k)[1]} +${Math.round(Math.min(p.part, 9.99) * 100)} %`)))),
+      h('button', { class: 'btn small', 'aria-label': `Je le mange : ${o.m.nom}`, onclick: () => mnManger(o) }, 'Je le mange')))),
+    h('small', { class: 'muted' }, 'Repas de la bibliothèque qui comblent le mieux ce qui manque aujourd\'hui (ta réserve comptée), dans tes préférences et ce qui reste de calories. Chaque pourcentage est la part de ton repère apportée. Touche un repas pour changer les grammes.')], { cls: 'vue-plus' });
   return foldCard('n.suggest', 'Quoi manger pour combler', () => { const s = any ? suggest(t, tg) : []; return [ // calcul lourd (toute la base) : seulement carte ouverte
     !any ? h('div', { class: 'empty' }, 'Note ton premier repas : je te dis ensuite quels aliments comblent ce qui manque.') :
     !s.length ? h('div', { class: 'empty' }, 'Tous tes micros sont au-dessus de 70 %. Rien à rattraper.') :

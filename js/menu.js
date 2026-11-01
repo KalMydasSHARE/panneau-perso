@@ -491,9 +491,16 @@ function menuCarte({ compact = false } = {}) {
       list.length ? (plein ? [mnLigne(list[0], td, compact), list.slice(1).map(o => mnLigneCourte(o, td))] : mnLigneCourte(list[0], td)) : null);
   };
   if (compact) {
-    const s = ouverts[0], suite = ouverts.slice(1).map(x => x.meal.toLowerCase());
+    const s = ouverts[0], suite = ouverts.slice(1);
+    /* La suite (1er novembre 2026) : dès qu'un repas est noté, chaque créneau restant montre sa meilleure proposition, choisie avec ce qui
+       reste à combler (calories, protéines, micros, réserves). Rien à réfléchir : « Je le mange » à chaque ligne. */
+    if (res.mange) return h('section', { class: 'card menu-card' }, (head.firstChild.textContent = 'La suite de ta journée', head), choixMatin,
+      h('small', { class: 'muted block' }, mnResteTxt(res)),
+      slotBloc(s, true),
+      suite.filter(x => x.rang.length).map(x => { const skip = MN_SESSION.autres[`${td}|${x.k}`], o = x.rang.find(y => !skip || !skip.has(y.m.id)); return o ? h('div', { class: 'mn-slot suite' }, h('h4', null, x.label || x.meal), mnLigneCourte(o, td)) : null; }),
+      h('small', { class: 'muted block mn-jour' }, `Avec ces repas : environ ${fmtK(res.jour.kcal)} kcal sur ${fmtK(res.budget.tk)}, micros couverts en moyenne ${mnPct(res.jour.cov)}.`));
     return h('section', { class: 'card menu-card' }, head, choixMatin, slotBloc(s, true), // version courte : ni phrase du budget ni explication, le détail est dans « Voir »
-      h('div', { class: 'row wrap' }, h('a', { class: 'btn small ghost', href: '#/nutri/jour' }, suite.length ? `Ensuite : ${mnListe(suite)}` : 'Voir la journée')));
+      h('div', { class: 'row wrap' }, h('a', { class: 'btn small ghost', href: '#/nutri/jour' }, suite.length ? `Ensuite : ${mnListe(suite.map(x => x.meal.toLowerCase()))}` : 'Voir la journée')));
   }
   return h('section', { class: 'card menu-card' }, head, budget, choixMatin,
     res.slots.filter(s => s.etat !== 'ouvert' && s.etat !== 'passe').map(s => s.etat === 'prevu' ? mnPrevuLigne(s, td) : h('small', { class: 'muted block' }, `${s.meal} : ${MN_ETAT_TXT[s.etat]}`)),
@@ -511,6 +518,43 @@ function menuCarte({ compact = false } = {}) {
       rythmeReglage(),
       h('small', { class: 'muted block' }, 'Mes repas : choisis-les avec ☆ dans la fiche d\'un repas ou dans Repas et recettes. Le menu ne propose qu\'eux pour un créneau où tu en as choisi. Réserves : ce que ta réserve estimée couvre déjà n\'est pas redemandé aujourd\'hui.'),
       h('small', { class: 'muted block' }, 'Estimations faites avec la base d\'aliments et des modèles de repas écrits par l\'assistant : ce n\'est pas un avis médical. En cas d\'allergie grave, lis toujours l\'étiquette.')));
+}
+// Ce qui reste à combler aujourd'hui, en une phrase : calories, protéines, les micros les plus en retard (besoin du jour, réserve comptée)
+function mnResteTxt(res) {
+  const t = dayTotals(today()), tg0 = targets(), tg = targetsReserve(tg0) || tg0;
+  const bas = MICROS_AVG.filter(m => tg[m[0]] > 0 && (t[m[0]] || 0) / tg[m[0]] < 0.6).sort((a, b) => (t[a[0]] || 0) / tg[a[0]] - (t[b[0]] || 0) / tg[b[0]]).slice(0, 3).map(m => mnNom(m[0]));
+  return `Il te reste ${fmtK(Math.max(0, res.budget.kcal))} kcal, ${fmtG(Math.max(0, res.budget.p))} g de protéines${bas.length ? `. Manque surtout : ${mnListe(bas)}` : ''}.`; // court : sur téléphone, plus de 110 signes se replient
+}
+/* Quoi manger pour combler (1er novembre 2026) : des REPAS de la bibliothèque, plus des aliments seuls (le foie sortait toujours en tête).
+   Pour chaque repas permis par les préférences et qui va avec un créneau encore ouvert : la part du manque du jour qu'il comble (besoin réduit
+   par la réserve), en tenant le reste des calories ; mes repas (★) passent devant ; les premiers ne se ressemblent pas (mnVarie). */
+function mnCombler(n = 5) {
+  if (!REPAS_OK() || !FLAGS_OK() || !CIQUAL_OK()) return null;
+  const td = today(), t = dayTotals(td), tg0 = targets(), tg = targetsReserve(tg0) || tg0, K = mnKeys(), info = mnRepasInfo(), cx = prefsCtx(), oui = new Set(PR().repasOui || []);
+  const res = menuDuJour(td, 'reste'), ouverts = res ? res.slots.filter(s => s.etat === 'ouvert') : [], slots = ouverts.length ? ouverts : MN_CRENEAUX;
+  const need = [], kRest = Math.max(150, tg0.kcal - (t.kcal || 0));
+  for (let i = 0; i < K.nMic; i++) { const k = K.keys[i]; need[i] = tg[k] > 0 ? Math.max(0, tg[k] - (t[k] || 0)) : 0; }
+  const besoin = need.reduce((a, x, i) => a + (x > 0 ? 1 : 0), 0); if (!besoin) return [];
+  const cands = [];
+  for (const r of REPAS.repas) {
+    if (!oui.has(r.id) && !!r.seul !== !!cx.p.seul) continue;
+    const s = slots.find(x => mnPourCreneau(r, x, info)); if (!s) continue;
+    const vr = verdictRepas(r, cx); if (vr.v === 'exclu') continue;
+    const mi = info.get(r.id); let best = null;
+    for (const [nom, coef] of MN_PORTIONS) {
+      let g = 0; const parts = [];
+      for (let i = 0; i < K.nMic; i++) { if (!need[i]) continue; const k = K.keys[i], a = Math.min(need[i], mi.vec[i] * coef); g += a / need[i]; if (a / tg0[k] >= 0.15) parts.push({ k, part: a / tg0[k] }); }
+      const kc = mi.kcal * coef, sc = g / besoin - Math.max(0, kc - kRest * 1.05) / kRest * 1.5 - Math.max(0, kRest * 0.25 - kc) / kRest * 0.3 + (oui.has(r.id) ? 0.05 : 0) + (vr.aime ? 0.03 : 0) - (vr.v === 'eviter' ? 0.05 : 0);
+      if (!best || sc > best.sc) best = { sc, nom, coef, parts: parts.sort((a, b) => b.part - a.part).slice(0, 3), kc, p: mi.vec[K.iP] * coef };
+    }
+    cands.push({ sc: best.sc, o: { c: { r, vr, mi }, nom: best.nom, coef: best.coef, best, s } });
+  }
+  cands.sort((a, b) => b.sc - a.sc || (a.o.c.r.id < b.o.c.r.id ? -1 : 1));
+  // variété : pas deux repas qui partagent un ingrédient principal, pas plus de deux du même genre (viande, poisson, végé)
+  const pris = [], mains = new Set(), genres = {};
+  for (const x of cands) { if (pris.length >= n) break; const r = x.o.c.r, g = mnProt(r), mm = x.o.c.mi.main;
+    if (mm.some(k => mains.has(k)) || (genres[g] || 0) >= 2) continue; pris.push(x); mm.forEach(k => mains.add(k)); genres[g] = (genres[g] || 0) + 1; }
+  return pris.map(x => ({ m: x.o.c.r, vr: x.o.c.vr, coef: x.o.coef, portion: x.o.nom, kcal: x.o.best.kc, p: x.o.best.p, meal: x.o.s.meal, slot: x.o.s.k, top: [], phrase: '', parts: x.o.best.parts }));
 }
 function mnPrevuLigne(s, d) {
   const es = (N().plan[d] || []).filter(e => e.meal === s.meal);
