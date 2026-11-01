@@ -102,7 +102,8 @@ function nutriDay(d) { // utilisé aussi par le Plan et le Panneau
 function suggest(t, tg) {
   const miss = MICROS_AVG.filter(m => (t[m[0]] || 0) / tg[m[0]] < 0.7).map(m => ({ k: m[0], name: m[1], rest: tg[m[0]] - (t[m[0]] || 0) }));
   if (!miss.length) return [];
-  return allFoods().filter(f => realFood(f) && !f.twinOf).map(f => {
+  // secours sans bibliothèque de repas : ni abats (le foie sortait toujours en tête) ni algues séchées
+  return allFoods().filter(f => realFood(f) && !f.twinOf && !/foie|abat|rognon|coeur|cœur|algue|nori|spiruline/i.test(f.n)).map(f => {
     const grams = typicalGrams(f), parts = miss.map(m => ({ ...m, share: Math.min(1, ((f.v[m.k] || 0) * grams / 100) / m.rest) })).filter(x => x.share >= 0.15);
     return { f, grams, parts, score: sum(parts, x => x.share) - ((f.v.kcal || 0) * grams / 100) / 1500 };
   }).filter(x => x.parts.length).sort((a, b) => b.score - a.score).slice(0, 6);
