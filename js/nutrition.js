@@ -318,6 +318,7 @@ function jourBlocs(d, x) {
       t.unk.kcal ? h('p', { class: 'unk small' }, `${t.unk.kcal} aliment(s) sans énergie publiée (${fmtK(t.unkG.kcal)} g) : pas comptés, le vrai total est plus haut.`) : null,
       bar('p', 'Protéines'), bar('c', 'Glucides'), bar('f', 'Lipides'), bar('fib', 'Fibres'),
       limit('sat', 'AG saturés'), limit('salt', 'Sel'), h('small', { class: 'muted' }, `Sucres : ${fmtG(t.sug)} g`, unkMark('sug')), detailsBox(t)])],
+    ['dette', 'À brûler (calories en trop)', () => (d === today() ? detteCarte(d) : null)],
     ['menu', 'Menu du jour', () => (d === today() && typeof menuCarte === 'function' ? menuCarte({ compact: true }) : null)],
     ['ajouter', 'Ajouter un repas', () => addPanel(d)],
     ['mange', 'Ce que j\'ai mangé', () => eatenCard(d, entries)],
@@ -333,6 +334,38 @@ function jourBlocs(d, x) {
     ['complements', 'Compléments', () => foldCard('n.supps', 'Compléments', () => [supplementsCard(d, ul)], { cls: 'vue-plus' })],
     ['jeune', 'Jeûne', () => (N().fast ? fastingCard() : foldCard('n.jeune', 'Jeûne', () => [fastingCard()], { cls: 'vue-plus' }))],
   ]; // « Quoi manger pour combler » : c'est désormais la suite de la journée, dans la carte du menu (js/menu.js, mnCombler)
+}
+/* Dette à brûler (1er novembre 2026). Les calories mangées au-dessus du repère du profil, sur les 6 jours notés d'avant plus l'excès
+   d'aujourd'hui, moins les jours sous le repère et les séances de sport notées depuis (Plan, Sport). Convertie en marche, course et vélo :
+   dépense en plus du repos = (MET - 1) x poids x heures (Compendium of Physical Activities, Ainsworth 2011 : marche 5 km/h 3,5 ;
+   course 10 km/h 9,8 ; vélo 16 à 19 km/h 6,8). Pas : foulée de marche environ 0,415 x taille. Objectif « prendre » : pas de dette. */
+const DETTE_ACTS = [['marche', 'Marche', '5 km/h', 3.5], ['course', 'Course', '10 km/h', 9.8], ['velo', 'Vélo', '18 km/h', 6.8]];
+const SPORT_MET = { Musculation: 5, Course: 9.8, Marche: 3.5, 'Vélo': 6.8, Natation: 7, 'Sport collectif': 7, 'Arts martiaux': 7, 'Yoga, mobilité': 2.5, Autre: 4 };
+const poidsKg = () => PF().weight || 75;
+const sportKcal = w => Math.max(0, ((SPORT_MET[w.type] || 4) - 1) * poidsKg() * ((w.min || 0) / 60) * (0.7 + 0.15 * ((w.rpe || 3) - 1)));
+function detteCalc(d) {
+  if ((PF().goal || 0) > 0) return null;
+  const k0 = targets().kcal, de = addDays(d, -6);
+  let ecart = 0;
+  for (let i = 1; i <= 6; i++) { const x = addDays(d, -i); if ((N().log[x] || []).length) ecart += (dayTotals(x).kcal || 0) - k0; }
+  const auj = Math.max(0, (dayTotals(d).kcal || 0) - k0), seances = P().workouts.filter(w => w.date >= de && w.date <= d), sport = sum(seances, sportKcal);
+  return { brut: ecart + auj, auj, sport, seances: seances.length, dette: Math.max(0, Math.round(ecart + auj - sport)) };
+}
+const fmtDuree = m => { m = Math.max(5, Math.round(m / 5) * 5); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ' ' + String(m % 60).padStart(2, '0') : ''}`; };
+function detteEquiv(kcal) {
+  const kg = poidsKg(), foulee = 0.415 * ((PF().height || 175) / 100);
+  return DETTE_ACTS.map(([k, nom, vit, met]) => { const min = (kcal / ((met - 1) * kg)) * 60; return { k, nom, vit, min, pas: k === 'marche' ? Math.round(((min / 60) * 5000) / foulee / 500) * 500 : null }; });
+}
+function detteCarte(d) {
+  const x = detteCalc(d); if (!x || x.dette < 100) return null;
+  const n = STATE.settings.detteJours || 3, parJour = x.dette / n;
+  return h('section', { class: 'card dette' },
+    h('div', { class: 'row between' }, h('h3', null, 'À brûler'), h('b', { class: 'neg' }, `${fmtK(x.dette)} kcal`)),
+    h('small', { class: 'muted block' }, `Calories au-dessus de ton repère sur 7 jours${x.sport ? `, moins ${fmtK(x.sport)} kcal de sport noté` : ''}.`),
+    seg([[1, 'En 1 jour'], [3, '3 jours'], [7, '7 jours']], n, v => { STATE.settings.detteJours = v; save(); rerender(); }),
+    h('div', { class: 'list' }, detteEquiv(parJour).map(e => h('div', { class: 'item' }, h('div', { class: 'grow' }, h('b', null, e.nom), h('small', { class: 'muted' }, ` · ${e.vit}`)),
+      h('div', { class: 'right' }, h('b', null, fmtDuree(e.min)), e.pas ? h('small', { class: 'muted' }, ` · ${fmtK(e.pas)} pas`) : null)))),
+    h('small', { class: 'muted block' }, `${n > 1 ? `Par jour, pendant ${n} jours (${fmtK(parJour)} kcal par jour). ` : ''}Au choix, une seule activité. Note ta séance dans Plan, Sport : la dette baisse. Manger un peu moins la fait baisser aussi${(equilibre(d) || {}).dk < 0 ? ` : ton repère d'aujourd'hui est déjà baissé de ${fmtK(-equilibre(d).dk)} kcal, le sport en plus rattrape plus vite` : ''}.`));
 }
 /* Besoin d'aujourd'hui avec la réserve estimée (js/reserves.js), réglage « Compter mes réserves » du menu.
    En réserve (au moins la moitié du plafond, 14 jours au plus) : rien à demander aujourd'hui. Réserve basse : on la remplit, le besoin monte
