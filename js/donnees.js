@@ -1,13 +1,13 @@
 'use strict';
 /* KalMydas PERSO : chargement des données du menu, sans bloquer l'écran du verrou.
    data/repas.js (bibliothèque de repas), data/regimes.js (drapeaux de régime et d'allergènes), data/arbre_aliments.js (liste à cocher),
-   data/reserves.js (modèle de réserve). Données publiques, aucune donnée de Kal : elles se lisent pendant qu'il tape son mot de passe,
+   data/reserves.js (modèle de réserve), data/prix.js (prix des magasins, 1er novembre 2026). Données publiques, aucune donnée de Kal : elles se lisent pendant qu'il tape son mot de passe,
    comme data/ciqual.js. start() (app.js) attend DONNEES_PRET. Si la page les a déjà (tests), rien à faire.
    DONNEES_CHARGE garde le temps de chaque fichier (mesure affichée dans Sources et méthode). */
-const DONNEES_FICHIERS = [['REPAS', 'data/repas.js'], ['FOODFLAGS', 'data/regimes.js'], ['ARBRE', 'data/arbre_aliments.js'], ['RESERVES', 'data/reserves.js']];
+const DONNEES_FICHIERS = [['REPAS', 'data/repas.js'], ['FOODFLAGS', 'data/regimes.js'], ['ARBRE', 'data/arbre_aliments.js'], ['RESERVES', 'data/reserves.js'], ['PRIX', 'data/prix.js']];
 const DONNEES_CHARGE = { ms: {}, err: [] };
 // une constante d'un script classique n'est pas une propriété de window : on la teste par son nom
-const donneeOk = nom => (nom === 'REPAS' ? typeof REPAS : nom === 'FOODFLAGS' ? typeof FOODFLAGS : nom === 'ARBRE' ? typeof ARBRE : typeof RESERVES) !== 'undefined';
+const donneeOk = nom => (nom === 'REPAS' ? typeof REPAS : nom === 'FOODFLAGS' ? typeof FOODFLAGS : nom === 'ARBRE' ? typeof ARBRE : nom === 'PRIX' ? typeof PRIX : typeof RESERVES) !== 'undefined';
 const DONNEES_PRET = Promise.all(DONNEES_FICHIERS.map(([nom, src]) => donneeOk(nom) ? Promise.resolve() : new Promise(res => {
   const t0 = performance.now(), s = document.createElement('script');
   s.src = src;

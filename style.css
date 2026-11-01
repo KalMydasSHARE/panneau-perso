@@ -657,3 +657,36 @@ details.gestes>summary::-webkit-details-marker{display:none}
 details.gestes[open]>summary{background:var(--fill)}
 details.gestes>.row{margin-top:.4rem;flex-wrap:wrap;justify-content:flex-end}
 .group > .row.between.wrap:has(details.gestes[open]){align-items:flex-start}
+
+/* ----- 1er novembre 2026 : dock en bas sur ordinateur, saisie sobre, styles du menu, mes repas, écrans à la carte ----- */
+/* ordinateur : le menu de gauche devient un dock de verre transparent, centré en bas, les boutons dedans */
+@media (min-width:761px){
+  .shell{grid-template-columns:1fr}
+  .main{margin:0 auto;width:100%;padding-bottom:calc(110px + env(safe-area-inset-bottom))}
+  .nav{position:fixed;top:auto;left:50%;bottom:16px;transform:translateX(-50%);height:auto;z-index:20;flex-direction:row;gap:.25rem;padding:.35rem;
+    border:1px solid var(--edge);border-right:1px solid var(--edge);border-radius:26px;background:var(--glass);
+    backdrop-filter:blur(26px) saturate(180%);-webkit-backdrop-filter:blur(26px) saturate(180%);box-shadow:var(--shadow);align-self:auto}
+  .nav a{flex-direction:column;gap:.15rem;padding:.45rem .9rem;min-width:76px;border-radius:20px;font-size:.74rem;align-items:center;text-align:center}
+  .nav a i{font-size:1.15rem;width:auto}
+  .nav a.on{background:var(--fill-on);color:var(--txt);box-shadow:var(--shadow-s)}
+  .nav a.on i{color:var(--gold2)}
+  .toast{bottom:100px}
+  .plate-bar{bottom:96px}
+}
+/* Ajouter : un seul champ, le repas à côté du titre */
+.add-head{align-items:center;gap:.6rem}
+.add-head h3{margin:0}
+.meal-sel{width:auto;max-width:12rem;padding:.4rem .7rem;font-size:.9rem}
+input.add-q{width:100%;font-size:1rem;padding:.75rem 1rem;border-radius:16px;margin:.5rem 0 .2rem}
+details.autres{margin-top:.6rem}
+details.autres>summary{color:var(--mut);font-size:.9rem}
+details.autres .row{margin-top:.45rem}
+/* styles du menu : une rangée de puces qui défile sur téléphone */
+.chips.styles{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:.15rem;margin:.2rem 0 .4rem}
+.chips.styles::-webkit-scrollbar{display:none}
+.chips.styles .chip{white-space:nowrap;flex:0 0 auto}
+/* mes repas */
+.icon.star{color:var(--mut);font-size:1.15rem}
+.icon.star.on{color:var(--gold2)}
+.prix{margin:.3rem 0}
+.perso-ecran{justify-content:center;margin:1.2rem 0 .4rem}

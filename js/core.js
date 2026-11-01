@@ -288,16 +288,16 @@ function defaultState() {
     },
     nutri: { targets: null, foods: [], log: {}, lastG: {}, water: {}, supps: [], supLog: {}, recipes: [], weights: [], fast: null, fasts: [], plan: {}, shop: {},
       prefs: defaultPrefs(), // préférences alimentaires (js/preferences.js)
-      menu: { maxMin: 40, sansCuisson: false, matin: 'petit', rythme: 'jour', fenetre: { de: 17, h: 6, repas: 1 } }, // menu du jour : temps de préparation voulu, au plus (5, 10, 20 ou 40 min) ; matin : un petit truc d'abord, ou un repas ; rythme : 'jour' (quatre créneaux) ou 'fenetre' (un ou deux repas entre fenetre.de et fenetre.de + fenetre.h)
+      menu: { maxMin: 40, sansCuisson: false, matin: 'petit', rythme: 'jour', fenetre: { de: 17, h: 6, repas: 1 }, mesRepas: true, reserves: true }, // menu du jour : temps de préparation voulu, au plus (5, 10, 20 ou 40 min) ; matin : un petit truc d'abord, ou un repas ; rythme : 'jour' (quatre créneaux) ou 'fenetre' (un ou deux repas entre fenetre.de et fenetre.de + fenetre.h)
       reserveDepart: 'vide' } // réserves : 'vide' (on ne compte que le suivi) ou 'plein' (état de départ normal, prise de sang récente)
   };
 }
 /* Préférences alimentaires : profil (clé de FOODFLAGS.meta.profils), allergies et intolérances (drapeaux), mode strict (un drapeau inconnu écarte),
    états posés dans la liste à cocher (noeuds, aliments), drapeaux exclus ou évités venus de la liste, repas refusés, masquer ce que j'exclus. */
-function defaultPrefs() { return { profil: null, allergies: [], strict: false, noeuds: {}, aliments: {}, flagsExclus: [], flagsEviter: [], repasNon: [], masquer: true, cru: false, shelton: false, seul: false }; }
+function defaultPrefs() { return { profil: null, allergies: [], strict: false, noeuds: {}, aliments: {}, flagsExclus: [], flagsEviter: [], repasNon: [], repasOui: [], masquer: true, cru: false, shelton: false, seul: false }; } // repasOui : repas que je suis prêt à manger (le menu ne propose qu'eux quand il y en a pour le créneau)
 function migratePrefs(p) {
   const d = defaultPrefs(), o = { ...d, ...(p && typeof p === 'object' ? p : {}) };
-  for (const k of ['allergies', 'flagsExclus', 'flagsEviter', 'repasNon']) if (!Array.isArray(o[k])) o[k] = [];
+  for (const k of ['allergies', 'flagsExclus', 'flagsEviter', 'repasNon', 'repasOui']) if (!Array.isArray(o[k])) o[k] = [];
   for (const k of ['noeuds', 'aliments']) if (!o[k] || typeof o[k] !== 'object' || Array.isArray(o[k])) o[k] = {};
   if (typeof o.profil !== 'string') o.profil = null;
   o.strict = !!o.strict; o.masquer = o.masquer !== false; o.cru = !!o.cru; o.shelton = !!o.shelton; o.seul = !!o.seul;
@@ -321,6 +321,7 @@ function migrate(s) {
   if (s.nutri.menu.rythme !== 'fenetre') s.nutri.menu.rythme = 'jour';
   { const f = s.nutri.menu.fenetre && typeof s.nutri.menu.fenetre === 'object' ? s.nutri.menu.fenetre : {}; s.nutri.menu.fenetre = { de: [10, 11, 12, 13, 14, 15, 16, 17, 18].includes(f.de) ? f.de : 17, h: [4, 6, 8].includes(f.h) ? f.h : 6, repas: f.repas === 2 ? 2 : 1 }; }
   delete s.nutri.menu.cru; // « Cru » vit dans les préférences depuis le 26 octobre 2026
+  s.nutri.menu.mesRepas = s.nutri.menu.mesRepas !== false; s.nutri.menu.reserves = s.nutri.menu.reserves !== false;
   if (s.nutri.reserveDepart !== 'plein') s.nutri.reserveDepart = 'vide';
   // ancien réglage d'activité 1,4 absent de la liste : la liste affichait « sédentaire » alors que le calcul prenait 1,4. On prend le niveau le plus proche.
   if (typeof ACTS !== 'undefined' && !ACTS.some(a => a[0] === s.profile.act)) s.profile.act = ACTS.reduce((b, a) => (Math.abs(a[0] - s.profile.act) < Math.abs(b[0] - s.profile.act) ? a : b), ACTS[1])[0];
@@ -359,3 +360,30 @@ function foldCard(key, title, kids, { open = false, cls = 'card' } = {}) {
 function seg(options, value, onpick) {
   return h('div', { class: 'seg' }, options.map(([v, l]) => h('button', { type: 'button', class: v === value ? 'on' : '', 'aria-pressed': v === value ? 'true' : 'false', onclick: () => onpick(v) }, l)));
 }
+
+/* Écrans à la carte (1er novembre 2026) : chaque écran liste ses blocs, on en cache, on change l'ordre.
+   STATE.settings.blocs[ecran] = { off: [clés cachées], ordre: [toutes les clés dans l'ordre voulu] }. blocs : [[clé, libellé, () => nœud]]. */
+const blocsReglage = ecran => ((STATE.settings.blocs || {})[ecran] || {});
+const blocVisible = (ecran, k) => !(blocsReglage(ecran).off || []).includes(k);
+function blocsEcran(ecran, blocs) {
+  const c = blocsReglage(ecran), off = new Set(c.off || []), ordre = c.ordre || [];
+  const rang = k => { const i = ordre.indexOf(k); return i < 0 ? 1000 + blocs.findIndex(b => b[0] === k) : i; };
+  return blocs.filter(b => !off.has(b[0])).sort((a, b) => rang(a[0]) - rang(b[0])).map(b => b[2]());
+}
+function personnaliserEcran(ecran, titre, blocs) {
+  const body = h('div', { class: 'form' });
+  const st = () => { const all = STATE.settings.blocs || (STATE.settings.blocs = {}); return all[ecran] || (all[ecran] = { off: [], ordre: [] }); };
+  const liste = () => { const c = blocsReglage(ecran), ordre = c.ordre || [], rang = k => { const i = ordre.indexOf(k); return i < 0 ? 1000 + blocs.findIndex(b => b[0] === k) : i; };
+    return blocs.map(b => b[0]).sort((a, b) => rang(a) - rang(b)); };
+  const draw = () => { const ks = liste(), lib = k => blocs.find(b => b[0] === k)[1];
+    fill(body, h('small', { class: 'muted' }, 'Coche ce que tu veux voir, flèches pour l\'ordre. Rien n\'est effacé : un bloc caché revient d\'un geste.'),
+      h('div', { class: 'list' }, ks.map((k, i) => h('div', { class: 'item' },
+        h('label', { class: 'check grow' }, h('input', { type: 'checkbox', checked: blocVisible(ecran, k), onchange: e => { const c = st(); c.off = (c.off || []).filter(x => x !== k); if (!e.target.checked) c.off.push(k); save(); rerender(); } }), h('span', null, lib(k))),
+        h('button', { class: 'icon', 'aria-label': `Monter ${lib(k)}`, disabled: i === 0, onclick: () => { const o = liste(); [o[i - 1], o[i]] = [o[i], o[i - 1]]; st().ordre = o; save(); rerender(); draw(); } }, '↑'),
+        h('button', { class: 'icon', 'aria-label': `Descendre ${lib(k)}`, disabled: i === ks.length - 1, onclick: () => { const o = liste(); [o[i + 1], o[i]] = [o[i], o[i + 1]]; st().ordre = o; save(); rerender(); draw(); } }, '↓')))),
+      h('button', { class: 'btn small ghost', onclick: () => { delete (STATE.settings.blocs || {})[ecran]; save(); rerender(); draw(); } }, 'Revenir à l\'écran de départ'));
+  };
+  draw();
+  modal(`Personnaliser : ${titre}`, body, []);
+}
+const boutonEcran = (ecran, titre, blocs) => h('div', { class: 'row perso-ecran' }, h('button', { class: 'btn small ghost', onclick: () => personnaliserEcran(ecran, titre, blocs) }, 'Personnaliser cet écran'));

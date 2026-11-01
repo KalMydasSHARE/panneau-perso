@@ -85,6 +85,7 @@ function notesRsv(x) {
   if (k === 'fe') out.push('Absorption non ajustée : la viande et la vitamine C aident, le thé, le café et le calcium freinent.');
   return out;
 }
+const dureeRsv = j => (j >= 60 ? `≈ ${Math.floor(j / 30)} mois (${j} j)` : `${j} j`);
 function urgTxt(u) { return u >= 0.67 ? 'haute' : u >= 0.34 ? 'moyenne' : u > 0 ? 'basse' : 'aucune'; }
 
 function sourcesRsv(x) {
@@ -109,7 +110,12 @@ function vueReserves(root) {
   const plein = N().reserveDepart === 'plein';
   put(root,
     h('section', { class: 'card gold' }, h('h3', null, 'Réserves estimées'),
-      h('p', null, RSV_AVERT), h('p', { class: 'muted small' }, 'Une prise de sang fait foi. Ce n\'est pas un avis médical : si un chiffre t\'inquiète, parles-en à ton médecin.'),
+      h('p', null, RSV_AVERT),
+      h('details', { class: 'more' }, h('summary', null, 'Comment ça se calcule'),
+        h('p', { class: 'small' }, 'Chaque nutriment a une réserve comptée en jours de besoin. Un jour où tu manges 150 % de ton repère, la réserve gagne une demi-journée (moins pour les vitamines qui partent dans les urines). Un jour à 0 %, elle perd un jour. Elle ne monte jamais au-dessus de son plafond.'),
+        h('p', { class: 'small' }, 'Le plafond vient des études : par exemple la vitamine A, stockée dans le foie, tient environ 4 mois (120 jours) sans apport au seuil d\'un statut correct (Olson 1987, repris par l\'EFSA). La vitamine C ne tient qu\'environ un mois, le potassium ou les fibres pas du tout : il en faut chaque jour.'),
+        h('p', { class: 'small' }, 'Tant que la réserve couvre au moins un jour, le besoin du jour baisse d\'autant : la Journée et le menu ne te demandent que ce qui manque vraiment (réglage « Compter mes réserves » dans le menu). Il faut donc noter tes repas dès maintenant : la réserve part de zéro et se remplit avec ce que tu notes. Si une prise de sang récente était normale, coche la case ci-dessous pour partir de réserves pleines.')),
+      h('p', { class: 'muted small' }, 'Une prise de sang fait foi. Ce n\'est pas un avis médical : si un chiffre t\'inquiète, parles-en à ton médecin.'),
       h('label', { class: 'daybox' }, h('input', { type: 'checkbox', checked: plein, onchange: e => { const r = garde(N(), 'reserveDepart'); N().reserveDepart = e.target.checked ? 'plein' : 'vide'; save(); rerender(); undoable(e.target.checked ? 'Réserves parties pleines' : 'Réserves parties de zéro', r); } }), 'Mon état de départ est normal (prise de sang récente)'),
       h('small', { class: 'muted block' }, plein ? 'Les réserves partent pleines au premier jour du suivi, puis suivent tes repas notés. À garder seulement si une prise de sang récente était normale.'
         : 'À cocher seulement si une prise de sang récente était normale. Sinon, la réserve part de zéro : on ne compte que ce qui est noté depuis le début du suivi.'),
@@ -120,8 +126,8 @@ function vueReserves(root) {
         h('div', { class: 'row between wrap' }, h('b', null, x.p.nom), h('span', { class: 'chips inline' }, h('span', { class: 'chip' }, RSV_TYPE[x.p.type] || x.p.type), h('span', { class: `chip ${x.p.preuve === 'forte' ? 'ok' : ''}` }, RSV_PREUVE[x.p.preuve] || x.p.preuve))),
         h('p', { class: 'small' }, phraseRsv(x)),
         h('div', { class: 'facts' },
-          h('div', null, h('small', null, 'Avance estimée'), h('b', null, !e ? '–' : e.plafond === 0 ? 'pas de réserve' : e.joursAvance >= 60 ? `≈ ${Math.floor(e.joursAvance / 30)} mois` : `${e.joursAvance} j`)),
-          h('div', null, h('small', null, 'Plafond du modèle'), h('b', null, e ? `${e.plafond} j` : '–'), h('small', null, x.p.plafond_origine === 'conception' ? 'choisi faute de valeur publiée' : 'd\'après la source')),
+          h('div', null, h('small', null, 'Avance estimée'), h('b', null, !e ? '–' : e.plafond === 0 ? 'pas de réserve' : dureeRsv(e.joursAvance))),
+          h('div', null, h('small', null, 'Plafond du modèle'), h('b', null, e ? dureeRsv(e.plafond) : '–'), h('small', null, x.p.plafond_origine === 'conception' ? 'choisi faute de valeur publiée' : 'd\'après la source')),
           h('div', null, h('small', null, 'Urgence pour le menu'), h('b', null, urgTxt(u)), progress(u * 100, u >= 0.67 ? 'bad' : u >= 0.34 ? 'warn' : 'ok'))),
         x.p.pertePubliee && x.p.pertePubliee.texte ? h('small', { class: 'muted block' }, `Pertes et renouvellement, d'après les sources : ${apos(x.p.pertePubliee.texte).replace(/^([A-ZÉ])(?=[a-zé])/, c => c.toLowerCase())}`) : null,
         notesRsv(x).map(t => h('small', { class: 'muted block' }, t)),

@@ -40,14 +40,16 @@ function quickAction(k) {
   if (k === 'seance') return quickWorkout();
   if (k === 'jeune') return quickFast();
 }
+// l'eau cachée de la Journée (Personnaliser cet écran) sort aussi des actions rapides
+const quickList = () => QUICK.filter(([k]) => k !== 'eau' || blocVisible('nutri.jour', 'eau'));
 function quickBar() {
-  return h('nav', { class: 'quick', 'aria-label': 'Actions rapides' }, QUICK.map(([k, l, ic]) => h('button', { class: 'quick-btn', onclick: () => quickAction(k), 'aria-label': k === 'eau' ? `Ajouter un verre d'eau de ${glassMl()} ml` : l },
+  return h('nav', { class: 'quick', 'aria-label': 'Actions rapides' }, quickList().map(([k, l, ic]) => h('button', { class: 'quick-btn', onclick: () => quickAction(k), 'aria-label': k === 'eau' ? `Ajouter un verre d'eau de ${glassMl()} ml` : l },
     h('i', { 'aria-hidden': 'true' }, ic), h('span', null, k === 'eau' ? `+ ${glassMl()} ml` : l))));
 }
 // Bouton + flottant sur téléphone : les mêmes actions, depuis n'importe quel écran
 function fab() {
   return h('button', { class: 'fab', 'aria-label': 'Actions rapides', onclick: () => {
-    const close = modal('Ajouter', h('div', { class: 'quick sheet-quick', onclick: e => { if (e.target.closest('button')) setTimeout(close, 0); } }, QUICK.map(([k, l, ic]) => h('button', { class: 'quick-btn', onclick: () => setTimeout(() => quickAction(k), 0) }, h('i', { 'aria-hidden': 'true' }, ic), h('span', null, k === 'eau' ? `+ ${glassMl()} ml` : l)))), [], { sheet: true });
+    const close = modal('Ajouter', h('div', { class: 'quick sheet-quick', onclick: e => { if (e.target.closest('button')) setTimeout(close, 0); } }, quickList().map(([k, l, ic]) => h('button', { class: 'quick-btn', onclick: () => setTimeout(() => quickAction(k), 0) }, h('i', { 'aria-hidden': 'true' }, ic), h('span', null, k === 'eau' ? `+ ${glassMl()} ml` : l)))), [], { sheet: true });
   } }, '+');
 }
 /* Repas en feuille : refaire hier, habituels de l'heure avec +, recherche. Tout s'ajoute au jour d'aujourd'hui. */

@@ -27,7 +27,7 @@ const mnCreneauxBase = () => (N().menu.rythme === 'fenetre' ? mnFenetre() : MN_C
 const MN_PORTIONS = [['petite', 0.75], ['normale', 1], ['grande', 1.35]];
 const MN_TEMPS = [5, 10, 20, 40];
 const MN_SESSION = { autres: {}, matinEncore: null }; // matinEncore : « petit » ou « repas » après un premier petit truc // « Autre proposition » : repas passés pour la journée, en mémoire seulement
-const MN_UI = { ouverts: new Set() }; // créneaux dont on a demandé les trois propositions
+const MN_UI = { ouverts: new Set(), style: {} }; // créneaux dont on a demandé les propositions ; style choisi par créneau (en mémoire)
 const MN_REPET = 0.04; // malus quand deux créneaux du même jour partagent un ingrédient principal
 
 /* ---------- vecteurs des repas ---------- */
@@ -124,6 +124,9 @@ function menuCalcule(date, mode = 'reste') {
   const t0 = performance.now(), K = mnKeys(), L = K.keys.length, info = mnRepasInfo(), cx = prefsCtx(), tgO = targets(), R = reservesEtat();
   const tg = new Float64Array(L);
   K.keys.forEach((k, i) => { tg[i] = k === 'salt' ? limitOf('salt') : k === 'sat' ? limitOf('sat') : tgO[k] || 0; });
+  const tgD = Float64Array.from(tg); // repères entiers, pour l'affichage
+  // réserve comptée (1er novembre 2026) : ce que la réserve estimée couvre déjà n'est pas redemandé au menu (réglage du menu, oui par défaut)
+  if (R && N().menu.reserves !== false) for (let i = 0; i < K.nMic; i++) { const x = R.n[K.keys[i]], e = x && x.etat; if (e && e.plafond > 0 && e.reserveHier > 0) tg[i] *= Math.max(0, 1 - e.reserveHier); }
   // poids : 1 + 2 x urgence de la réserve (0 à 1) ; sans réserves chargées, tout pèse 1
   // visée : 100 % du repère ; un nutriment qui a une réserve et dont la moyenne des 7 derniers jours était basse vise jusqu'à 150 %
   // (le modèle compte l'excès d'un jour pour remplir la réserve, jusqu'à gainMax)
@@ -168,24 +171,29 @@ function menuCalcule(date, mode = 'reste') {
   const need = new Float64Array(K.nCov); for (let i = 0; i < K.nCov; i++) need[i] = Math.max(0, tg[i] * cap[i] - T[i]);
   const kRest = tk - T[K.iK];
   let nbOk = 0;
+  // mes repas (1er novembre 2026) : quand j'ai choisi des repas pour ce créneau, le menu ne propose qu'eux (réglage « Mes repas seulement »)
+  const oui = new Set(PR().repasOui || []), mesActif = N().menu.mesRepas !== false && oui.size > 0;
   for (const s of ouverts) {
     let cands = [];
+    const mes = mesActif && REPAS.repas.some(r => oui.has(r.id) && mnPourCreneau(r, s, info) && verdictRepas(r, cx).v !== 'exclu');
+    s.mes = mes;
     for (const r of REPAS.repas) {
-      if (!!r.seul !== !!cx.p.seul) continue; // repas d'un seul aliment : seulement avec la préférence, et alors seuls eux
+      if (mes ? !oui.has(r.id) : !!r.seul !== !!cx.p.seul) continue; // repas d'un seul aliment : seulement avec la préférence, et alors seuls eux
       if (!mnPourCreneau(r, s, info)) continue;
       const vr = verdictRepas(r, cx); if (vr.v === 'exclu') continue;
       nbOk++;
-      if (r.min > maxMin || (sansCuisson && r.cuisson) || recentRepas.has(r.id)) continue;
+      if (!mes && (r.min > maxMin || (sansCuisson && r.cuisson))) continue;
+      const recent = recentRepas.has(r.id); if (recent && !mes) continue; // mes repas : un repas des trois derniers jours reste proposé, en dernier
       const mi = info.get(r.id);
-      cands.push({ r, vr, mi, overlap: mi.main.filter(k => recentMain.has(k)).length });
+      cands.push({ r, vr, mi, overlap: mi.main.filter(k => recentMain.has(k)).length + (recent ? 2 : 0) });
     }
     const sansRepet = cands.filter(c => !c.overlap);
-    s.diversiteStricte = sansRepet.length >= 6;
+    s.diversiteStricte = !mes && sansRepet.length >= 6;
     if (s.diversiteStricte) cands = sansRepet; // assez de choix : jamais les mêmes ingrédients principaux que les trois derniers jours (sinon, un malus)
     s.nbCandidats = cands.length;
     const share = s.part / sumPart, slotK = Math.max(120, kRest * share);
     for (const c of cands) {
-      c.bonus = (c.vr.aime ? 0.03 : 0) - (c.vr.v === 'eviter' ? 0.05 : 0) - (c.vr.v === 'a_verifier' ? 0.01 : 0) - 0.03 * c.overlap;
+      c.bonus = (oui.has(c.r.id) ? 0.03 : 0) + (c.vr.aime ? 0.03 : 0) - (c.vr.v === 'eviter' ? 0.05 : 0) - (c.vr.v === 'a_verifier' ? 0.01 : 0) - 0.03 * c.overlap;
       let best = -Infinity;
       for (const [, coef] of MN_PORTIONS) {
         let rich = 0;
@@ -242,7 +250,7 @@ function menuCalcule(date, mode = 'reste') {
     // le choix de la combinaison passe en tête (il est aussi le meilleur ici, sauf égalité)
     if (best[si]) { const j = rang.findIndex(x => x.o.c.r.id === best[si].c.r.id); if (j > 0) rang.unshift(rang.splice(j, 1)[0]); if (rang[0]) rang[0].o = best[si]; }
     s.saute = !best[si];
-    s.rang = rang.map(x => mnOption(x.o, s, { tg, T, u, R, mange, K }));
+    s.rang = mnVarie(rang).map(x => mnOption(x.o, s, { tg: tgD, T, u, R, mange, K }));
   });
   // ce que donnerait la journée avec les premiers choix
   const Sj = sumOf(best, -1), lows = [];
@@ -252,6 +260,42 @@ function menuCalcule(date, mode = 'reste') {
   return { date, mode, slots, ouverts: ouverts.length, nbOk, budget: { kcal: kRest, p: tp - T[K.iP], tk, tp }, mange,
     jour: { kcal: Sj[K.iK], p: Sj[K.iP], cov: covSum / K.nMic, nb90, nMic: K.nMic, lows }, ms: performance.now() - t0 };
 }
+/* Styles (1er novembre 2026) : les premières propositions d'un créneau ne se ressemblent pas. Un style = viande, poisson, végé ou végétalien,
+   chaud ou froid, et la cuisine. Parmi les choix presque aussi bons que le premier (écart de score sous 0,08), on prend d'abord un style neuf. */
+const mnProt = m => (m.regimes.includes('vegetalien') ? 'vegan' : m.regimes.includes('vegetarien') ? 'vege' : m.allergenes.some(a => ['poisson', 'crustaces', 'mollusques'].includes(a)) ? 'poisson' : m.regimes.includes('pescetarien') ? 'vege' : 'viande');
+const mnStyleCle = m => `${mnProt(m)}|${m.cuisson ? 'chaud' : 'froid'}|${m.cuisine}`;
+function mnVarie(rang) {
+  if (rang.length < 3) return rang;
+  const out = [rang[0]], reste = rang.slice(1), vus = new Set([mnStyleCle(rang[0].o.c.r)]), prots = new Set([mnProt(rang[0].o.c.r)]), seuil = rang[0].sc - 0.08;
+  while (out.length < 4 && reste.length) {
+    let j = reste.findIndex(x => x.sc >= seuil && !prots.has(mnProt(x.o.c.r)));
+    if (j < 0) j = reste.findIndex(x => x.sc >= seuil && !vus.has(mnStyleCle(x.o.c.r)));
+    if (j < 0) j = 0;
+    const x = reste.splice(j, 1)[0]; out.push(x); vus.add(mnStyleCle(x.o.c.r)); prots.add(mnProt(x.o.c.r));
+  }
+  return out.concat(reste);
+}
+// Filtres de style de la carte : seuls ceux qui ont au moins un repas dans le créneau sont montrés (le matin n'a pas les mêmes que le soir)
+const MN_STYLES = [['', 'Tous'], ['mes', 'Mes repas'], ['rapide', 'Rapide'], ['leger', 'Léger'], ['copieux', 'Copieux'], ['chaud', 'Chaud'], ['froid', 'Froid'], ['vege', 'Végé'], ['poisson', 'Poisson'], ['viande', 'Viande'], ['petitprix', 'Petit prix']];
+function mnStyleOk(o, k) {
+  const m = o.m, grand = o.slot === 'dejeuner' || o.slot === 'diner';
+  switch (k) {
+    case 'mes': return (PR().repasOui || []).includes(m.id);
+    case 'rapide': return m.min <= 10;
+    case 'leger': return o.kcal <= (grand ? 500 : 250);
+    case 'copieux': return o.kcal >= (grand ? 750 : 400);
+    case 'chaud': return !!m.cuisson;
+    case 'froid': return !m.cuisson;
+    case 'vege': return m.regimes.includes('vegetarien');
+    case 'poisson': return mnProt(m) === 'poisson';
+    case 'viande': return mnProt(m) === 'viande';
+    case 'petitprix': { const p = typeof prixRepas === 'function' ? prixRepas(o.items || mnItems(m, o.coef)) : null; return p && p.chf > 0 ? p.chf <= (grand ? 4 : 2) : m.budget === 'petit'; }
+    default: return true;
+  }
+}
+// Ingrédients d'une proposition, en grammes pour la portion choisie
+const mnItems = (m, coef) => m.ing.map(([id, g]) => ({ food: id, g: Math.round(g * coef * 10) / 10 }));
+
 // Une proposition prête à afficher : portion, calories, les 3 micros les mieux couverts, une phrase honnête
 function mnOption(o, s, ctx) {
   const { K, tg, T, u, R } = ctx, m = o.c.r, mic = [];
@@ -288,11 +332,15 @@ function menuDuJour(date = today(), mode = 'reste') {
 }
 
 /* ---------- gestes ---------- */
-const mnEntrees = (m, coef, meal) => m.ing.map(([id, g]) => { const f = foodById(id); return { meal, food: id, name: f ? f.n : id, g: Math.round(g * coef * 10) / 10, repas: m.id }; });
-function mnManger(o, d = today()) { if (o.slot === 'petit-dejeuner') MN_SESSION.matinEncore = null; logEntries(d, mnEntrees(o.m, o.coef, o.meal), `${o.m.nom} noté au ${o.meal.toLowerCase()}`); }
+// o.items : quantités changées à la main dans la fiche (plus de viande, moins de fromage, un ingrédient en plus ou en moins)
+const mnEntrees = (m, coef, meal, items) => (items || mnItems(m, coef)).filter(i => i.g > 0).map(i => { const f = foodById(i.food); return { meal, food: i.food, name: f ? f.n : i.food, g: i.g, repas: m.id }; });
+function mnManger(o, d = today()) {
+  if (o.slot === 'petit-dejeuner') MN_SESSION.matinEncore = null;
+  logEntries(d, mnEntrees(o.m, o.coef, o.meal, o.items), `${o.m.nom} noté au ${o.meal.toLowerCase()}`, [], [{ label: 'Quantités', run: () => ajusterEntrees(d, (N().log[d] || []).filter(e => e.repas === o.m.id && e.meal === o.meal), o.meal) }]);
+}
 function mnPrevoir(o, d = today()) {
   const r = garde(N().plan, d);
-  (N().plan[d] = N().plan[d] || []).push(...mnEntrees(o.m, o.coef, o.meal).map(e => ({ ...e, id: uid() })));
+  (N().plan[d] = N().plan[d] || []).push(...mnEntrees(o.m, o.coef, o.meal, o.items).map(e => ({ ...e, id: uid() })));
   save(); rerender(); undoable(`${o.m.nom} prévu ${d === today() ? 'aujourd\'hui' : dateLabel(d)} (${o.meal.toLowerCase()})`, r);
 }
 function mnAutre(o, d = today()) {
@@ -312,33 +360,49 @@ function mnPasPourMoi(o) {
     plusCourt ? h('button', { class: 'btn ghost', onclick: () => { close(); const r = garde(N(), 'menu'); N().menu = { ...N().menu, maxMin: plusCourt }; save(); rerender(); undoable(`Temps de préparation : ${plusCourt} min au plus`, r); } }, `Trop long (${m.min} min) : ${plusCourt} min au plus`) : h('small', { class: 'muted' }, `${m.min} minutes : c'est déjà le plus court.`));
   close = modal(`Pas pour moi : ${m.nom}`, body, []);
 }
-// Fiche d'un repas : ingrédients et grammes de la portion, préparation, allergènes, régimes, nutriments, et tous les gestes
+// Fiche d'un repas : ingrédients en grammes, CHANGEABLES (1er novembre 2026), préparation, prix, allergènes, régimes, nutriments, et les gestes
+const mnOui = m => (PR().repasOui || []).includes(m.id);
+function mnBasculeOui(m) {
+  const r = garde(PR(), 'repasOui'), l = PR().repasOui || (PR().repasOui = []);
+  if (l.includes(m.id)) PR().repasOui = l.filter(x => x !== m.id); else l.push(m.id);
+  save(); rerender(); undoable(mnOui(m) ? `${m.nom} : dans mes repas` : `${m.nom} : retiré de mes repas`, r);
+}
 function mnDetail(o, opts = {}) {
-  const m = o.m, st = { coef: o.coef }, body = h('div', { class: 'form' }), cx = prefsCtx(), K = mnKeys(), info = mnRepasInfo().get(m.id), tg = targets();
+  const m = o.m, st = { coef: o.coef, items: o.items ? o.items.map(i => ({ ...i })) : mnItems(m, o.coef), q: '', change: !!o.items }, body = h('div', { class: 'form' }), cx = prefsCtx(), tg = targets();
   const draw = () => {
-    const kc = info.kcal * st.coef;
-    const mic = MICROS_AVG.map(x => ({ x, part: tg[x[0]] > 0 ? (info.vec[K.keys.indexOf(x[0])] * st.coef) / tg[x[0]] : 0 })).sort((a, b) => b.part - a.part).slice(0, 6);
+    const t = totalsOf(st.items.map(i => ({ food: i.food, g: i.g })), null);
+    const mic = MICROS_AVG.map(x => ({ x, part: tg[x[0]] > 0 ? (t[x[0]] || 0) / tg[x[0]] : 0 })).sort((a, b) => b.part - a.part).slice(0, 6);
+    const px = typeof prixRepas === 'function' ? prixRepas(st.items) : null, res = h('div', { class: 'results' });
+    const q = inp('search', st.q, { placeholder: 'Ajouter un ingrédient (fromage, huile…)', 'aria-label': 'Ajouter un ingrédient au repas', oninput: e => { st.q = e.target.value; liste(); } });
+    const liste = () => res.replaceChildren(h('div', { class: 'list' }, (st.q.trim() ? searchFoods(st.q, 6) : []).map(f => h('button', { class: 'pick-line', onclick: () => { st.items.push({ food: f.id, g: defaultG(f) }); st.q = ''; st.change = true; draw(); } }, h('span', null, f.n), h('small', { class: 'muted' }, foodMeta(f))))));
     fill(body,
-      h('small', { class: 'muted' }, `${(REPAS.meta.creneaux[m.creneau] || m.creneau)} · ${m.min} min · ${m.seul ? 'un seul aliment' : (REPAS.meta.cuisines[m.cuisine] || m.cuisine).toLowerCase()}${m.budget ? ' · ' + (REPAS.meta.budget[m.budget] || m.budget) : ''}${m.cru ? ' · cru' : m.cuisson ? '' : ' · sans cuisson'}${m.shelton ? ' · bien combiné' : ''}${m.sport ? ' · riche en protéines' : ''}`),
-      m.seul ? h('small', { class: 'muted block' }, 'Un seul aliment de la base : ses valeurs sont celles de l\'aliment, source dans sa fiche (ⓘ).') : m.nature !== 'recette de l\'assistant' ? h('small', { class: 'unk block' }, 'Plat composé de la source : valeurs calculées par Ciqual ou l\'OSAV pour le plat entier, recette moyenne.') : h('small', { class: 'muted block' }, 'Modèle de repas écrit par l\'assistant ; les valeurs viennent de la base d\'aliments.'),
-      seg(MN_PORTIONS.map(([n, c]) => [String(c), `${n} · ${fmtK(info.kcal * c)} kcal`]), String(st.coef), v => { st.coef = +v; draw(); }),
-      h('div', { class: 'list' }, m.ing.map(([id, g]) => { const f = foodById(id), v = cx.v(id), gg = Math.round(g * st.coef * 10) / 10; return h('div', { class: 'item' },
-        h('div', { class: 'grow' }, f ? f.n : id, h('small', { class: 'muted' }, ` · ${f ? quantiteTexte(f, gg) : fmtNum(gg) + ' g'}`),
+      h('small', { class: 'muted' }, `${(REPAS.meta.creneaux[m.creneau] || m.creneau)} · ${m.min} min · ${m.seul ? 'un seul aliment' : (REPAS.meta.cuisines[m.cuisine] || m.cuisine).toLowerCase()}${m.cru ? ' · cru' : m.cuisson ? '' : ' · sans cuisson'}${m.shelton ? ' · bien combiné' : ''}${m.sport ? ' · riche en protéines' : ''}`),
+      h('div', { class: 'row' }, h('button', { class: `btn small ${mnOui(m) ? '' : 'ghost'}`, 'aria-pressed': mnOui(m) ? 'true' : 'false', onclick: () => { mnBasculeOui(m); draw(); } }, mnOui(m) ? '★ Dans mes repas' : '☆ Je suis prêt à le manger')),
+      seg(MN_PORTIONS.map(([n, c]) => [String(c), n]), st.change ? '' : String(st.coef), v => { st.coef = +v; st.items = mnItems(m, st.coef); st.change = false; draw(); }),
+      h('small', { class: 'muted block' }, 'Change les grammes à ta guise : plus de viande, plus de fromage, un ingrédient en moins. Tout se recalcule.'),
+      h('div', { class: 'list' }, st.items.map((i, ix) => { const f = foodById(i.food), v = cx.v(i.food); return h('div', { class: 'item' },
+        h('div', { class: 'grow' }, f ? shortName(f.n) : i.food, h('small', { class: 'muted' }, ` · ${entryKcal({ food: i.food, g: i.g })} kcal`),
           v.v === 'a_verifier' ? h('small', { class: 'unk' }, ` · à vérifier : ${v.doute.map(t => flagNom(t).toLowerCase()).join(', ')}`) : null,
           v.aime ? h('small', { class: 'pos' }, ' · aimé') : null, v.eviter ? h('small', { class: 'unk' }, ' · à éviter') : null),
-        f ? h('button', { class: 'icon info', 'aria-label': `Fiche de ${f.n}`, onclick: () => foodSheet(f, gg) }, 'ⓘ') : null); })),
+        inp('text', String(i.g), { inputmode: 'decimal', class: 'lim', 'aria-label': `Grammes de ${f ? f.n : i.food}`, onchange: e => { const x = num(e.target.value); i.g = x > 0 ? r2(x) : 0; st.change = true; draw(); } }), h('small', null, 'g'),
+        f ? h('button', { class: 'icon info', 'aria-label': `Fiche de ${f.n}`, onclick: () => foodSheet(f, i.g) }, 'ⓘ') : null,
+        h('button', { class: 'icon', 'aria-label': `Retirer ${f ? f.n : i.food}`, onclick: () => { st.items.splice(ix, 1); st.change = true; draw(); } }, '×')); })),
+      q, res,
+      h('p', { class: 'small' }, h('b', null, `${fmtK(t.kcal)} kcal`), ` · protéines ${fmtG(t.p)} g · glucides ${fmtG(t.c)} g · lipides ${fmtG(t.f)} g`),
+      h('small', { class: 'muted block' }, mic.map(x => `${x.x[1]} ${mnPct(x.part)}${t.unk[x.x[0]] ? ' (au moins)' : ''}`).join(' · ')),
+      px ? prixLigne(px) : null,
       m.prep ? h('p', { class: 'small' }, m.prep) : null,
-      h('p', { class: 'small' }, h('b', null, `${fmtK(kc)} kcal`), ` · protéines ${fmtG(info.vec[K.iP] * st.coef)} g · ${mic.map(x => `${x.x[1]} ${mnPct(x.part)}${info.inconnus.has(x.x[0]) ? ' (au moins)' : ''}`).join(' · ')}`),
       o.phrase ? h('small', { class: 'muted block' }, o.phrase) : null,
+      m.seul ? h('small', { class: 'muted block' }, 'Un seul aliment de la base : ses valeurs sont celles de l\'aliment, source dans sa fiche (ⓘ).') : m.nature !== 'recette de l\'assistant' ? h('small', { class: 'unk block' }, 'Plat composé de la source : valeurs calculées par Ciqual ou l\'OSAV pour le plat entier, recette moyenne.') : null,
       h('small', { class: 'block' }, h('b', null, 'Allergènes : '), m.allergenes.length ? m.allergenes.map(a => REPAS.allergenes[a] || a).join(', ') : 'aucun des 14 d\'après les ingrédients'),
-      h('small', { class: 'muted block' }, `Régimes : ${m.regimes.map(r => REPAS.regimes[r] || r).join(', ')}.`),
-      h('small', { class: 'muted block' }, m.shelton ? 'Combinaisons (Shelton) : bien combiné.' : `Combinaisons (Shelton) : ${(m.combi || []).join(', ')}.`),
-      h('small', { class: 'unk block' }, REPAS.meta.avertissement));
+      h('details', { class: 'more' }, h('summary', null, 'Régimes et combinaisons'), h('small', { class: 'muted block' }, `Régimes : ${m.regimes.map(r => REPAS.regimes[r] || r).join(', ')}.`),
+        h('small', { class: 'muted block' }, m.shelton ? 'Combinaisons (Shelton) : bien combiné.' : `Combinaisons (Shelton) : ${(m.combi || []).join(', ')}.`), h('small', { class: 'unk block' }, REPAS.meta.avertissement)));
+    liste();
   };
   draw();
-  const cur = () => ({ ...o, coef: st.coef, portion: (MN_PORTIONS.find(p => p[1] === st.coef) || ['normale'])[0] });
+  const cur = () => ({ ...o, coef: st.coef, items: st.change ? st.items.map(i => ({ ...i })) : null, portion: st.change ? 'à ma façon' : (MN_PORTIONS.find(p => p[1] === st.coef) || ['normale'])[0] });
   const acts = [];
-  if (opts.menu) acts.push({ label: 'Pas pour moi', cls: 'btn ghost', run: () => { setTimeout(() => mnPasPourMoi(o), 0); } }, { label: 'Autre proposition', cls: 'btn ghost', run: () => mnAutre(o) });
+  if (opts.menu) acts.push({ label: 'Pas pour moi', cls: 'btn ghost', run: () => { setTimeout(() => mnPasPourMoi(o), 0); } }, { label: 'Autre', cls: 'btn ghost', run: () => mnAutre(o) });
   acts.push({ label: 'Prévoir', cls: opts.date && opts.date !== today() ? 'btn' : 'btn ghost', run: () => mnPrevoir(cur(), opts.date) });
   if (!opts.date || opts.date === today()) acts.push({ label: 'Je le mange', run: () => mnManger(cur()) }); // un repas de demain se prévoit, il ne se mange pas
   modal(m.nom, body, acts);
@@ -346,13 +410,14 @@ function mnDetail(o, opts = {}) {
 
 /* ---------- la carte « Menu du jour » ---------- */
 const MN_ETAT_TXT = { mange: 'noté', passe: 'heure passée', jeune: 'pendant ton jeûne', prevu: 'prévu' };
-const mnPortionTxt = o => (o.portion === 'normale' ? 'Portion normale' : o.portion === 'petite' ? 'Petite portion' : 'Grande portion');
+const mnPortionTxt = o => (o.portion === 'normale' ? 'Portion normale' : o.portion === 'petite' ? 'Petite portion' : o.portion === 'grande' ? 'Grande portion' : 'À ma façon');
+const mnPrixTxt = o => { const p = typeof prixRepas === 'function' ? prixRepas(mnItems(o.m, o.coef)) : null; return p && p.chf > 0 ? ` · ${p.part < 1 ? 'au moins ' : '≈ '}${fmtCHF(p.chf)}` : ''; };
 // Proposition complète : nom, portion, phrase, micros, et les cinq gestes (compact : Panneau, « Je le mange », « Autre », « Voir »)
 function mnLigne(o, d, compact) {
   const vr = o.vr;
   return h('div', { class: 'prop first' },
     h('div', { class: 'prop-head' }, h('button', { class: 'prop-nom', onclick: () => mnDetail(o, { menu: true, date: d }), 'aria-label': `Voir les ingrédients : ${o.m.nom}` }, h('b', null, o.m.nom)),
-      h('small', { class: 'muted block' }, `${mnPortionTxt(o)} · ${fmtK(o.kcal)} kcal · ${fmtG(o.p)} g de protéines · ${o.m.min} min`)),
+      h('small', { class: 'muted block' }, `${mnPortionTxt(o)} · ${fmtK(o.kcal)} kcal · ${fmtG(o.p)} g de protéines · ${o.m.min} min${mnPrixTxt(o)}`)),
     compact ? null : h('small', { class: 'why' }, o.phrase),
     h('div', { class: 'chips' }, o.top.map(x => h('span', { class: 'chip ok', title: x.inconnu ? 'Au moins : un ingrédient n\'a pas de valeur publiée' : 'Part de ton repère du jour' }, `${MICROS.find(m => m[0] === x.k)[1]} ${x.part > 3 ? (x.inconnu ? 'au moins 300 %' : 'plus de 300 %') : (x.inconnu ? 'au moins ' : '') + mnPct(x.part)}`)),
       vr.v === 'a_verifier' ? h('span', { class: 'chip unk', title: FOODFLAGS.meta.avertissement }, `à vérifier : ${vr.doute.map(t => flagNom(t).toLowerCase()).join(', ')}`) : null,
@@ -367,7 +432,7 @@ function mnLigne(o, d, compact) {
 // Proposition en une ligne : nom (la fiche s'ouvre d'un geste), calories, « Je le mange »
 function mnLigneCourte(o, d) {
   return h('div', { class: 'prop court' }, h('div', { class: 'grow' }, h('button', { class: 'prop-nom', onclick: () => mnDetail(o, { menu: true, date: d }), 'aria-label': `Voir les ingrédients : ${o.m.nom}` }, o.m.nom),
-    h('small', { class: 'muted block' }, `${mnPortionTxt(o)} · ${fmtK(o.kcal)} kcal`)),
+    h('small', { class: 'muted block' }, `${mnPortionTxt(o)} · ${fmtK(o.kcal)} kcal${mnPrixTxt(o)}`)),
     h('button', { class: 'btn small', 'aria-label': `Je le mange : ${o.m.nom}, ${mnPortionTxt(o).toLowerCase()}`, onclick: () => mnManger(o, d) }, 'Je le mange'));
 }
 // Explication honnête d'un micro qui reste bas malgré la meilleure combinaison (REPAS.md, section 4)
@@ -409,11 +474,18 @@ function menuCarte({ compact = false } = {}) {
     compact ? null : res.slots.filter(s => s.etat === 'prevu').map(s => mnPrevuLigne(s, td)));
   // propositions d'un créneau : la première complète, les deux suivantes en une ligne ; replié : la première en une ligne
   const slotBloc = (s, plein) => {
-    const skip = MN_SESSION.autres[`${td}|${s.k}`], list = s.rang.filter(o => !skip || !skip.has(o.m.id)).slice(0, compact ? 1 : 3);
+    const skip = MN_SESSION.autres[`${td}|${s.k}`], sty = MN_UI.style[s.k] || '';
+    const list = s.rang.filter(o => (!skip || !skip.has(o.m.id)) && mnStyleOk(o, sty)).slice(0, compact ? 3 : 4);
+    // styles proposés : ceux qui ont au moins deux repas dans ce créneau (le matin n'a pas les mêmes que le soir)
+    const styles = s.rang.length > 3 ? MN_STYLES.filter(([k]) => !k || k === sty || s.rang.filter(o => mnStyleOk(o, k)).length >= 2) : [];
+    const chips = styles.length > 2 ? h('div', { class: 'chips styles', role: 'group', 'aria-label': `Style pour le ${s.meal.toLowerCase()}` }, styles.map(([k, l]) => h('button', { class: `chip pick${k === sty ? ' sel' : ''}`, 'aria-pressed': k === sty ? 'true' : 'false', onclick: () => { MN_UI.style[s.k] = k; rerender(); } }, l))) : null;
     return h('div', { class: 'mn-slot' }, h('div', { class: 'row between wrap' }, h('h4', null, s.label || (s.k === 'petit-dejeuner' && s.matin === 'petit' ? (s.encore ? 'Encore un petit truc' : 'Un petit truc pour commencer') : s.encore ? 'Petit-déjeuner' : s.meal)),
       h('small', { class: 'muted' }, s.apresJeune ? `après ton jeûne (fin à ${hm(s.apresJeune)})` : s.label ? `entre ${s.de} h et ${Math.round(s.a)} h` : s.facultatif ? (s.saute ? 'facultative : ton budget tient sans elle' : 'facultative') : '')),
+      plein ? chips : null,
+      s.mes ? h('small', { class: 'muted block' }, 'Parmi tes repas choisis (★). Réglage dans le détail du menu.') : null,
+      s.rang.length && !list.length && sty ? h('p', { class: 'small muted' }, 'Rien dans ce style pour l\'instant. ', h('button', { class: 'btn small ghost', onclick: () => { MN_UI.style[s.k] = ''; rerender(); } }, 'Tous les styles')) : null,
       !s.rang.length ? h('p', { class: 'unk small' }, s.nbCandidats === 0 ? `Aucun repas de la bibliothèque ne tient tes préférences et ton temps (${N().menu.maxMin} min au plus) pour ce créneau.` : 'Rien à proposer.')
-        : !list.length ? h('p', { class: 'small muted' }, 'Tu as passé toutes les propositions. ', h('button', { class: 'btn small ghost', onclick: () => { delete MN_SESSION.autres[`${td}|${s.k}`]; rerender(); } }, 'Revoir les premières')) : null,
+        : !list.length && !sty ? h('p', { class: 'small muted' }, 'Tu as passé toutes les propositions. ', h('button', { class: 'btn small ghost', onclick: () => { delete MN_SESSION.autres[`${td}|${s.k}`]; rerender(); } }, 'Revoir les premières')) : null,
       list.length ? (plein ? [mnLigne(list[0], td, compact), list.slice(1).map(o => mnLigneCourte(o, td))] : mnLigneCourte(list[0], td)) : null);
   };
   if (compact) {
@@ -431,8 +503,11 @@ function menuCarte({ compact = false } = {}) {
     h('details', { class: 'more' }, h('summary', null, 'Détail de la journée et réglages du menu'), mnResumeJour(res),
       h('div', { class: 'row wrap' }, h('small', { class: 'muted' }, 'Temps de préparation :'), seg(MN_TEMPS.map(t => [String(t), `${t} min`]), String(N().menu.maxMin || 40), v => { const r = garde(N(), 'menu'); N().menu = { ...N().menu, maxMin: +v }; save(); rerender(); undoable(`Temps de préparation : ${v} min au plus`, r); }),
         h('label', { class: 'daybox' }, h('input', { type: 'checkbox', checked: !!N().menu.sansCuisson, onchange: e => { N().menu = { ...N().menu, sansCuisson: e.target.checked }; save(); rerender(); } }), 'Sans cuisson'),
+        h('label', { class: 'daybox' }, h('input', { type: 'checkbox', checked: N().menu.mesRepas !== false, onchange: e => { N().menu = { ...N().menu, mesRepas: e.target.checked }; save(); rerender(); } }), `Mes repas seulement (${(PR().repasOui || []).length} choisis ★)`),
+        h('label', { class: 'daybox' }, h('input', { type: 'checkbox', checked: N().menu.reserves !== false, onchange: e => { N().menu = { ...N().menu, reserves: e.target.checked }; save(); rerender(); } }), 'Compter mes réserves'),
         N().menu.rythme === 'fenetre' ? null : [h('small', { class: 'muted' }, 'Le matin :'), seg([['petit', 'Un petit truc d\'abord'], ['repas', 'Un repas']], N().menu.matin || 'petit', v => { const r = garde(N(), 'menu'); N().menu = { ...N().menu, matin: v }; save(); rerender(); undoable(v === 'petit' ? 'Le matin : un petit truc d\'abord' : 'Le matin : un repas', r); })]),
       rythmeReglage(),
+      h('small', { class: 'muted block' }, 'Mes repas : choisis-les avec ☆ dans la fiche d\'un repas ou dans Repas et recettes. Le menu ne propose qu\'eux pour un créneau où tu en as choisi. Réserves : ce que ta réserve estimée couvre déjà n\'est pas redemandé aujourd\'hui.'),
       h('small', { class: 'muted block' }, 'Estimations faites avec la base d\'aliments et des modèles de repas écrits par l\'assistant : ce n\'est pas un avis médical. En cas d\'allergie grave, lis toujours l\'étiquette.')));
 }
 function mnPrevuLigne(s, d) {
@@ -469,26 +544,29 @@ function mnJourneeModal() {
 }
 
 /* ---------- bibliothèque de repas complets (onglet Recettes) ---------- */
-const MN_BIB = { creneau: '', q: '', n: 20, exclus: false, cru: false, shelton: false, seul: false };
+const MN_BIB = { creneau: '', q: '', n: 20, exclus: false, cru: false, shelton: false, seul: false, mes: false };
 function vueBibliotheque() {
   if (!REPAS_OK() || !FLAGS_OK()) return h('section', { class: 'card' }, h('p', { class: 'neg' }, 'Bibliothèque de repas non chargée.'));
   const cx = prefsCtx(), info = mnRepasInfo(), q = motsPref(MN_BIB.q);
-  const tous = REPAS.repas.filter(m => (!MN_BIB.creneau || (m.seul ? m.creneaux.includes(MN_BIB.creneau) : m.creneau === MN_BIB.creneau)) && (!MN_BIB.cru || m.cru) && (!MN_BIB.shelton || m.shelton) && (!MN_BIB.seul || m.seul) && (!q.length || q.every(w => motsPref(m.nom).some(t => t.startsWith(w)))));
+  const tous = REPAS.repas.filter(m => (!MN_BIB.creneau || (m.seul ? m.creneaux.includes(MN_BIB.creneau) : m.creneau === MN_BIB.creneau)) && (!MN_BIB.cru || m.cru) && (!MN_BIB.shelton || m.shelton) && (!MN_BIB.seul || m.seul) && (!MN_BIB.mes || mnOui(m)) && (!q.length || q.every(w => motsPref(m.nom).some(t => t.startsWith(w)))));
   const ok = tous.filter(m => verdictRepas(m, cx).v !== 'exclu'), list = (MN_BIB.exclus ? tous : ok).slice(0, MN_BIB.n);
   const list2 = h('div', { class: 'list' }, list.map(m => { const vr = verdictRepas(m, cx), mi = info.get(m.id), meal = MN_CRENEAUX.find(c => c.k === m.creneau).meal;
     const o = { m, vr, coef: 1, portion: 'normale', meal, slot: m.creneau, kcal: mi.kcal, p: mi.vec[mnKeys().iP], top: [], phrase: '' };
     return h('div', { class: `item${vr.v === 'exclu' ? ' dim' : ''}` }, h('div', { class: 'grow click', onclick: () => mnDetail(o), title: 'Voir les ingrédients' }, h('b', null, m.nom),
       h('small', { class: 'muted' }, ` · ${m.seul ? 'un seul aliment' : meal.toLowerCase()}${m.cru ? ' · cru' : ''}${m.shelton ? ' · bien combiné' : ''} · ${m.min} min · ${fmtK(mi.kcal)} kcal · ${fmtG(o.p)} g prot.`),
       vr.v === 'exclu' ? h('small', { class: 'neg block' }, `Exclu : ${vr.pourquoi.slice(0, 2).join(' ; ')}`) : vr.v === 'a_verifier' ? h('small', { class: 'unk block' }, `À vérifier : ${vr.doute.map(t => flagNom(t).toLowerCase()).join(', ')}`) : null),
+      h('button', { class: `icon star${mnOui(m) ? ' on' : ''}`, 'aria-pressed': mnOui(m) ? 'true' : 'false', title: 'Je suis prêt à le manger', 'aria-label': `${mnOui(m) ? 'Retirer de mes repas' : 'Je suis prêt à le manger'} : ${m.nom}`, onclick: () => mnBasculeOui(m) }, mnOui(m) ? '★' : '☆'),
       vr.v === 'exclu' ? null : h('button', { class: 'btn small', 'aria-label': `Je le mange : ${m.nom}`, onclick: () => mnManger(o) }, 'Je le mange'),
       h('button', { class: 'btn small ghost', 'aria-label': `Voir : ${m.nom}`, onclick: () => mnDetail(o) }, 'Voir')); }));
   return h('section', { class: 'card' }, h('h3', null, 'Repas complets'),
+    h('small', { class: 'block' }, `★ Mes repas : ${(PR().repasOui || []).length} choisis. Touche ☆ sur un repas que tu es prêt à manger : le menu du jour ne proposera qu'eux.`),
     h('small', { class: 'muted block' }, `${ok.length} repas sur ${tous.length} tiennent tes préférences (${prefsResume()}). Valeurs pour une portion normale.`),
     seg([['', 'Tous'], ...MN_CRENEAUX.map(c => [c.k, c.meal])], MN_BIB.creneau, v => { MN_BIB.creneau = v; MN_BIB.n = 20; rerender(); }),
     h('div', { class: 'row wrap' }, inp('search', MN_BIB.q, { 'aria-label': 'Chercher un repas', placeholder: 'Chercher un repas (lentilles, saumon, rösti…)', oninput: e => { MN_BIB.q = e.target.value; MN_BIB.n = 20; rerender(); } }),
       h('label', { class: 'daybox' }, h('input', { type: 'checkbox', checked: MN_BIB.exclus, onchange: e => { MN_BIB.exclus = e.target.checked; rerender(); } }), 'Montrer aussi les exclus'),
       h('label', { class: 'daybox' }, h('input', { type: 'checkbox', checked: MN_BIB.cru, onchange: e => { MN_BIB.cru = e.target.checked; MN_BIB.n = 20; rerender(); } }), 'Cru seulement'),
       h('label', { class: 'daybox' }, h('input', { type: 'checkbox', checked: MN_BIB.shelton, onchange: e => { MN_BIB.shelton = e.target.checked; MN_BIB.n = 20; rerender(); } }), 'Bien combiné'),
+      h('label', { class: 'daybox' }, h('input', { type: 'checkbox', checked: MN_BIB.mes, onchange: e => { MN_BIB.mes = e.target.checked; MN_BIB.n = 20; rerender(); } }), '★ Mes repas'),
       h('label', { class: 'daybox' }, h('input', { type: 'checkbox', checked: MN_BIB.seul, onchange: e => { MN_BIB.seul = e.target.checked; MN_BIB.n = 20; rerender(); } }), 'Un seul aliment')),
     list2, (MN_BIB.exclus ? tous : ok).length > MN_BIB.n ? h('button', { class: 'btn small ghost', onclick: () => { MN_BIB.n += 40; rerender(); } }, `Voir plus (${(MN_BIB.exclus ? tous : ok).length - MN_BIB.n} de plus)`) : null,
     h('small', { class: 'unk block' }, REPAS.meta.avertissement));

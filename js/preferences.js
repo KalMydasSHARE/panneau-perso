@@ -321,7 +321,19 @@ function carteRepasPourToi() {
     h('div', { class: 'list' }, tri.slice(0, PRF_POUR.n).map(ligne)),
     tri.length > PRF_POUR.n ? h('button', { class: 'btn small ghost', onclick: () => { PRF_POUR.n += 12; rerender(); } }, `Voir plus (${tri.length - PRF_POUR.n} de plus)`) : null);
 }
+// Mes écrans (1er novembre 2026) : ce qui s'affiche sur la Journée et sur le Panneau, cochable, dans l'ordre voulu
+const HOME_BLOCS_LIB = [['rapide', 'Actions rapides'], ['maintenant', 'Maintenant (tâches et alertes)'], ['menu', 'Menu du jour'], ['habitudes', 'Habitudes du jour'], ['ensemble', "Vue d'ensemble"]];
+function ecransCarte() {
+  const off = (e, lib) => lib.filter(([k]) => !blocVisible(e, k)).map(x => x[1].split(' (')[0]);
+  const jl = jourBlocs(today()).map(b => [b[0], b[1]]), oj = off('nutri.jour', jl), oh = off('home', HOME_BLOCS_LIB);
+  return h('section', { class: 'card' }, h('h3', null, 'Mes écrans'),
+    h('small', { class: 'muted block' }, 'Choisis ce que tu veux voir, comme des widgets : coche, décoche, change l\'ordre.'),
+    h('small', { class: 'muted block' }, `Journée : ${oj.length ? `caché ${oj.join(', ')}` : 'tout est affiché'}. Panneau : ${oh.length ? `caché ${oh.join(', ')}` : 'tout est affiché'}.`),
+    h('div', { class: 'row wrap' }, h('button', { class: 'btn small ghost', onclick: () => personnaliserEcran('nutri.jour', 'Journée', jl.map(x => [...x, () => null])) }, 'Journée (Nutrition)'),
+      h('button', { class: 'btn small ghost', onclick: () => personnaliserEcran('home', 'Panneau', HOME_BLOCS_LIB.map(x => [...x, () => null])) }, 'Panneau')));
+}
 function vuePreferences(root) {
+  root.append(ecransCarte());
   if (!FLAGS_OK() || !ARBRE_OK()) return put(root, h('section', { class: 'card' }, h('h3', null, 'Préférences'), h('p', { class: 'neg' }, `Données des régimes non chargées (${DONNEES_CHARGE.err.join(', ') || 'chargement en cours'}). Recharge la page.`)));
   const p = PR(), prof = profilDe(p.profil), cpt = comptesNoeuds(), A = arbreIx();
   const comptes = (FOODFLAGS.meta.profils_comptes || {})[prof ? prof.k : 'omnivore'];

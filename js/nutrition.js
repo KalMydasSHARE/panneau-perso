@@ -154,7 +154,7 @@ const defaultG = f => N().lastG[f.id] || (portionsOf(f)[0] || {}).g || typicalGr
 
 /* Noter des aliments : une seule écriture, un seul message avec « Annuler » (et « Modifier » pour un seul aliment).
    Pendant un jeûne, le message propose de le terminer. */
-function logEntries(d, entries, msg, extra = []) {
+function logEntries(d, entries, msg, extra = [], plus = []) {
   if (!entries.length) return;
   const restores = [garde(N().log, d), garde(N(), 'lastG'), ...extra];
   const now = Date.now();
@@ -164,6 +164,7 @@ function logEntries(d, entries, msg, extra = []) {
   const acts = [];
   if (entries.length === 1 && entries[0].food) { const last = N().log[d][N().log[d].length - 1]; acts.push({ label: 'Modifier', run: () => editEntry(d, last) }); }
   if (N().fast && d === today()) acts.push({ label: 'Finir le jeûne', run: () => endFast() });
+  acts.push(...plus);
   undoable(msg, restores, { actions: acts });
 }
 const shortName = n => n.split(',')[0].replace(/\s*\(.*?\)/g, '').trim();
@@ -228,8 +229,8 @@ const ADD = { meal: mealNow(), mealAt: 0, q: '', pick: null, g: '', mode: 'food'
 
 MODULES.nutri = {
   title: 'Nutrition',
-  subs: [['jour', 'Journée'], ['tendances', 'Tendances'], ['reserves', 'Réserves'], ['recettes', 'Repas et recettes'], ['planning', 'Plan de repas'], ['corps', 'Poids'], ['aliments', 'Aliments'], ['preferences', 'Préférences'], ['objectifs', 'Objectifs'], ['sources', 'Sources et méthode']],
-  render(root, sub) { ({ jour: vueNJour, tendances: vueTendances, reserves: vueReserves, recettes: vueRecettes, planning: vuePlanning, corps: vueCorps, aliments: vueAliments, preferences: vuePreferences, objectifs: vueNObjectifs, sources: vueSources }[sub] || vueNJour)(root); }
+  subs: [['jour', 'Journée'], ['historique', 'Historique'], ['tendances', 'Tendances'], ['reserves', 'Réserves'], ['recettes', 'Repas et recettes'], ['planning', 'Plan de repas'], ['corps', 'Poids'], ['aliments', 'Aliments'], ['preferences', 'Préférences'], ['objectifs', 'Objectifs'], ['sources', 'Sources et méthode']],
+  render(root, sub) { ({ jour: vueNJour, historique: vueHistorique, tendances: vueTendances, reserves: vueReserves, recettes: vueRecettes, planning: vuePlanning, corps: vueCorps, aliments: vueAliments, preferences: vuePreferences, objectifs: vueNObjectifs, sources: vueSources }[sub] || vueNJour)(root); }
 };
 
 /* ----- journée ----- */
@@ -246,31 +247,65 @@ function vueNJour(root) {
     !CIQUAL_OK() ? h('section', { class: 'card' }, h('p', { class: 'neg' }, `Base d'aliments non chargée (${CIQUAL_CHARGE.err || 'raison inconnue'}). Les repas notés ne comptent pas leurs valeurs. Recharge la page.`)) : null,
     ul.length ? h('section', { class: 'card alertcard' }, h('h3', null, 'Limite haute dépassée'), ul.map(a => h('p', { class: a.type === 'NS' ? 'unk' : 'neg' }, h('b', null, a.nom), ` : ${ulText(a)}.`, a.note ? h('small', { class: 'muted' }, ` ${a.note}`) : null)),
       h('small', { class: 'muted' }, 'Limites de l\'EFSA pour un adulte en bonne santé. Ce n\'est pas un avis médical : parles-en à ton médecin si cela se répète.')) : null,
-    dayBand(t, tg, mp),
-    d === today() && typeof menuCarte === 'function' ? menuCarte({ compact: true }) : null,
-    addPanel(d),
-    eatenCard(d, entries),
-    d === today() && typeof rsvEncart === 'function' ? rsvEncart() : null,
-    waterCard(d),
-    N().fast ? fastingCard() : null,
+    d > today() ? futurBandeau(d) : null,
+    ...blocsEcran('nutri.jour', jourBlocs(d, { t, tg, mp, entries, quick, frag, ul, bar, limit, unkMark })),
+    N().fast && !blocVisible('nutri.jour', 'jeune') ? fastingCard() : null, // un jeûne en cours reste visible
     plateBar(d),
     t.miss ? h('p', { class: 'neg small' }, `${t.miss} repas pointe(nt) vers un aliment introuvable : il ne compte pas.`) : null,
-    foldCard('n.macros', 'Calories et macros', () => [
+    boutonEcran('nutri.jour', 'Journée', jourBlocs(d, { t, tg, mp, entries, quick, frag, ul, bar, limit, unkMark })));
+}
+/* Blocs de la Journée, dans l'ordre de départ ; chacun se cache ou se déplace (Personnaliser cet écran, ou Préférences). */
+function jourBlocs(d, x) {
+  const { t, tg, mp, entries, quick, frag, ul, bar, limit, unkMark } = x || {};
+  const tgR = d === today() && tg ? targetsReserve(tg) : null, tgM = tgR || tg; // aujourd'hui : ce que la réserve couvre déjà ne se redemande pas
+  return [
+    ['bilan', 'Bilan du jour', () => dayBand(t, tg, microPct(t, tgM))],
+    ['menu', 'Menu du jour', () => (d === today() && typeof menuCarte === 'function' ? menuCarte({ compact: true }) : null)],
+    ['ajouter', 'Ajouter un repas', () => addPanel(d)],
+    ['mange', 'Ce que j\'ai mangé', () => eatenCard(d, entries)],
+    ['reserves', 'À remplacer aujourd\'hui (réserves)', () => (d === today() && typeof rsvEncart === 'function' ? rsvEncart() : null)],
+    ['eau', 'Eau', () => waterCard(d)],
+    ['macros', 'Calories et macros', () => foldCard('n.macros', 'Calories et macros', () => [
       h('section', { class: 'card' }, h('div', { class: 'row between' },
         h('div', null, h('h3', null, 'Calories et macros'), h('div', { class: 'big' }, fmtK(t.kcal), t.unk.kcal ? h('span', { class: 'unk' }, ' ?') : null, h('small', { class: 'muted' }, ` / ${fmtK(tg.kcal)} kcal`)), h('small', { class: 'muted' }, t.kcal < tg.kcal ? `reste ${fmtK(tg.kcal - t.kcal)} kcal` : `${fmtK(t.kcal - tg.kcal)} kcal au-dessus`)),
         ring((t.kcal / tg.kcal) * 100, fmtPct((t.kcal / tg.kcal) * 100, 0))),
         t.unk.kcal ? h('p', { class: 'unk small' }, `${t.unk.kcal} aliment(s) sans énergie publiée (${fmtK(t.unkG.kcal)} g) : pas comptés, le vrai total est plus haut.`) : null,
         bar('p', 'Protéines'), bar('c', 'Glucides'), bar('f', 'Lipides'), bar('fib', 'Fibres'),
-        limit('sat', 'AG saturés'), limit('salt', 'Sel'), h('small', { class: 'muted' }, `Sucres : ${fmtG(t.sug)} g`, unkMark('sug')), detailsBox(t))], { cls: 'vue-plus' }),
-    foldCard('n.micros', `Micronutriments · ${fmtPct(mp, 0)}`, () => [
-      h('section', { class: 'card' }, h('p', { class: 'muted small' }, 'Part moyenne de tes repères couverte aujourd\'hui. Touche un micro pour voir où le trouver.'), microLows(t, tg),
+        limit('sat', 'AG saturés'), limit('salt', 'Sel'), h('small', { class: 'muted' }, `Sucres : ${fmtG(t.sug)} g`, unkMark('sug')), detailsBox(t))], { cls: 'vue-plus' })],
+    ['micros', 'Micronutriments', () => foldCard('n.micros', `Micronutriments · ${fmtPct(microPct(t, tgM), 0)}`, () => [
+      h('section', { class: 'card' }, h('p', { class: 'muted small' }, tgR ? 'Part du besoin d\'aujourd\'hui couverte. Ce que ta réserve estimée couvre déjà ne compte plus comme besoin (Réserves). Touche un micro pour voir où le trouver.' : 'Part moyenne de tes repères couverte ce jour. Touche un micro pour voir où le trouver.'),
+        microLows(t, tgM, tgR ? tg : null),
         quick ? h('small', { class: 'muted' }, `${quick} saisie(s) rapide(s) sans micros : elles ne comptent que pour les calories et macros.`) : null,
         frag.length ? h('details', { class: 'more' }, h('summary', null, 'À lire avec prudence'), h('p', { class: 'muted small' }, 'Ces totaux reposent en bonne part sur des valeurs inconnues ou douteuses. Les chiffres affichés sont alors trop bas ou incertains.'),
           h('div', { class: 'chips' }, frag.map(x => h('span', { class: `chip ${x.unk ? '' : 'bad'}`, title: x.why }, `${x.label} : ${x.why}`)))) : null,
-        h('details', { class: 'more' }, h('summary', null, 'Tous les micronutriments'), microGrid(t, tg)))], { cls: 'vue-plus' }),
-    foldCard('n.supps', 'Compléments', () => [supplementsCard(d, ul)], { cls: 'vue-plus' }),
-    N().fast ? null : foldCard('n.jeune', 'Jeûne', () => [fastingCard()], { cls: 'vue-plus' }),
-    suggestPanel(t, tg, entries.length > 0));
+        h('details', { class: 'more' }, h('summary', null, 'Tous les micronutriments'), microGrid(t, tgM, tgR ? tg : null)))], { cls: 'vue-plus' })],
+    ['complements', 'Compléments', () => foldCard('n.supps', 'Compléments', () => [supplementsCard(d, ul)], { cls: 'vue-plus' })],
+    ['jeune', 'Jeûne', () => (N().fast ? fastingCard() : foldCard('n.jeune', 'Jeûne', () => [fastingCard()], { cls: 'vue-plus' }))],
+    ['combler', 'Quoi manger pour combler', () => suggestPanel(t, tgM, entries.length > 0)]
+  ];
+}
+/* Besoin d'aujourd'hui une fois la réserve estimée comptée (js/reserves.js) : une réserve qui couvre au moins un jour ramène le besoin du
+   jour à ce qui manque. Seulement les réserves courtes et longues ; « quotidien » et « os » gardent leur repère entier. Réglage dans le menu. */
+function targetsReserve(tg) {
+  if (N().menu.reserves === false || typeof reservesEtat !== 'function') return null;
+  const R = reservesEtat(); if (!R || !R.debut) return null;
+  const out = { ...tg }; let any = false;
+  for (const m of MICROS) { const x = R.n[m[0]]; if (!x || !x.etat || !(x.etat.plafond > 0) || !(x.etat.reserveHier > 0) || !(tg[m[0]] > 0)) continue;
+    out[m[0]] = tg[m[0]] * Math.max(0, 1 - x.etat.reserveHier); any = true; }
+  return any ? out : null;
+}
+// Jour à venir : ce qui y est noté ou prévu s'efface d'un geste (un essai, une erreur)
+function futurBandeau(d) {
+  const nl = (N().log[d] || []).length, np = (N().plan[d] || []).length;
+  if (!nl && !np) return null;
+  return h('section', { class: 'card alertcard' }, h('div', { class: 'row between wrap' }, h('small', null, `Jour à venir : ${nl ? `${nl} aliment(s) noté(s)` : ''}${nl && np ? ' et ' : ''}${np ? `${np} prévu(s)` : ''}.`),
+    h('button', { class: 'btn small danger', onclick: () => effacerJour(d) }, 'Tout effacer ce jour')));
+}
+function effacerJour(d, quoi = 'tout') {
+  const rs = [garde(N().log, d), garde(N().plan, d)];
+  if (quoi !== 'plan') delete N().log[d];
+  if (quoi !== 'log') delete N().plan[d];
+  save(); rerender(); undoable(`${dateLabel(d)} effacé`, rs);
 }
 // Bande compacte en haut : calories, macros, micros d'un coup d'œil
 function dayBand(t, tg, mp) {
@@ -288,7 +323,7 @@ function eatenCard(d, entries) {
       const es = entries.filter(e => e.meal === m), unk = es.some(e => !e.n && entryN(e).kcal === undefined);
       return es.length ? h('div', { class: 'group' }, h('div', { class: 'row between wrap' }, h('small', { class: 'muted up' }, `${m} · ${fmtK(sum(es, e => entryN(e).kcal || 0))}${unk ? ' + ?' : ''} kcal`),
         h('details', { class: 'gestes' }, h('summary', { 'aria-label': `Autres gestes pour le ${m.toLowerCase()}`, title: 'Copier, en faire une recette' }, '⋯'),
-          h('div', { class: 'row' }, h('button', { class: 'btn small ghost', onclick: () => copyTo(d, m, es) }, 'Copier vers…'), h('button', { class: 'btn small ghost', onclick: () => saveAsRecipe(es, m) }, 'En faire une recette')))),
+          h('div', { class: 'row' }, h('button', { class: 'btn small ghost', onclick: () => ajusterEntrees(d, es, m) }, 'Changer les quantités'), h('button', { class: 'btn small ghost', onclick: () => copyTo(d, m, es) }, 'Copier vers…'), h('button', { class: 'btn small ghost', onclick: () => saveAsRecipe(es, m) }, 'En faire une recette')))),
       es.map(e => { const f = e.food ? foodById(e.food) : null; return h('div', { class: 'item' }, h('div', { class: `grow${f ? ' click' : ''}`, onclick: f ? () => foodSheet(f, e.g) : null, title: f ? 'Voir la fiche' : null }, e.name, h('small', { class: 'muted' }, e.n ? ' · saisie rapide' : ` · ${f ? quantiteTexte(f, e.g) : fmtNum(e.g) + ' g'}`)), h('div', { class: 'right' }, `${entryKcal(e)} kcal`),
         h('button', { class: 'icon', 'aria-label': `Changer la quantité de ${e.name}`, onclick: () => editEntry(d, e) }, '✎'),
         h('button', { class: 'icon', 'aria-label': `Retirer ${e.name}`, onclick: () => removeEntry(d, e) }, '×')); })) : null; })
@@ -299,16 +334,19 @@ function removeEntry(d, e) {
   N().log[d] = (N().log[d] || []).filter(x => x !== e); if (!N().log[d].length) delete N().log[d];
   save(); rerender(); undoable(`${shortName(e.name)} retiré`, r);
 }
-function microLows(t, tg) {
-  const low = MICROS_AVG.map(m => ({ m, r: (t[m[0]] || 0) / tg[m[0]] })).sort((a, b) => a.r - b.r).slice(0, 4);
-  return h('div', { class: 'list' }, h('small', { class: 'muted up' }, 'Les plus en retard'), low.map(x => h('div', { class: 'item click', onclick: () => sourcesModal(x.m) }, h('div', { class: 'grow' }, h('b', null, x.m[1]), t.unk && t.unk[x.m[0]] ? h('small', { class: 'unk', title: 'Valeur absente de la base pour certains aliments' }, ' ?') : null, progress(x.r * 100, covClass(x.r))), h('div', { class: 'right' }, fmtPct(Math.min(x.r, 9.99) * 100, 0)))));
+// tgFull : le repère entier quand tg est le besoin du jour réduit par la réserve ; un micro couvert par la réserve le dit
+const rsvCouvre = (k, tg, tgFull) => tgFull && tgFull[k] > 0 && tg[k] < tgFull[k];
+function microLows(t, tg, tgFull) {
+  const low = MICROS_AVG.map(m => ({ m, r: tg[m[0]] > 0 ? (t[m[0]] || 0) / tg[m[0]] : 1 })).sort((a, b) => a.r - b.r).slice(0, 4);
+  return h('div', { class: 'list' }, h('small', { class: 'muted up' }, 'Les plus en retard'), low.map(x => h('div', { class: 'item click', onclick: () => sourcesModal(x.m) }, h('div', { class: 'grow' }, h('b', null, x.m[1]), t.unk && t.unk[x.m[0]] ? h('small', { class: 'unk', title: 'Valeur absente de la base pour certains aliments' }, ' ?') : null,
+    rsvCouvre(x.m[0], tg, tgFull) ? h('small', { class: 'muted' }, tg[x.m[0]] > 0 ? ` · besoin du jour ${fmtNum(tg[x.m[0]])} ${x.m[2]} sur ${fmtNum(tgFull[x.m[0]])}, la réserve couvre le reste` : ' · couvert par ta réserve') : null, progress(x.r * 100, covClass(x.r))), h('div', { class: 'right' }, fmtPct(Math.min(x.r, 9.99) * 100, 0)))));
 }
-function microGrid(t, tg) {
+function microGrid(t, tg, tgFull) {
   const groups = [...new Set(MICROS.map(m => m[4]))];
   return h('div', null, groups.map(g => h('div', { class: 'group' }, h('small', { class: 'muted up' }, g),
-    h('div', { class: 'micros' }, MICROS.filter(m => m[4] === g).map(m => { const v = t[m[0]] || 0, r = v / tg[m[0]], u = t.unk && t.unk[m[0]];
+    h('div', { class: 'micros' }, MICROS.filter(m => m[4] === g).map(m => { const v = t[m[0]] || 0, r = tg[m[0]] > 0 ? v / tg[m[0]] : 1, u = t.unk && t.unk[m[0]], rc = rsvCouvre(m[0], tg, tgFull);
       return h('div', { class: 'micro click', onclick: () => sourcesModal(m) }, h('div', { class: 'row between' }, h('b', null, m[1]), h('small', { class: covClass(r) + '-t' }, fmtPct(r * 100, 0))), progress(r * 100, covClass(r)),
-        h('small', { class: 'muted' }, `${fmtNum(v)} / ${fmtNum(tg[m[0]])} ${m[2]}`), u ? h('small', { class: 'unk' }, ` · donnée absente pour ${u} aliment(s)`) : null,
+        h('small', { class: 'muted' }, rc ? `${fmtNum(v)} / ${fmtNum(tg[m[0]])} ${m[2]} aujourd'hui (repère ${fmtNum(tgFull[m[0]])}, réserve comptée)` : `${fmtNum(v)} / ${fmtNum(tg[m[0]])} ${m[2]}`), u ? h('small', { class: 'unk' }, ` · donnée absente pour ${u} aliment(s)`) : null,
         h('small', { class: 'src' }, refLabel(m[0]) + (m[5] ? ' · hors de la moyenne' : ''))); })))),
     h('small', { class: 'muted' }, 'Vitamine A comptée en RAE (bêta-carotène divisé par 12, comme les bases d\'aliments) : son repère est donc celui de la DGE/ÖGE, quelle que soit la source choisie. Détail dans Sources et méthode.'));
 }
@@ -434,14 +472,20 @@ function fastingCard() {
 /* ----- ajout d'un repas : aliment, recette ou produit emballé ----- */
 function addPanel(d) {
   const picked = ADD.pick ? foodById(ADD.pick) : null;
-  const tabs = seg([['food', 'Aliment'], ['recipe', 'Recette'], ['off', 'Produit emballé']], ADD.mode, v => { ADD.mode = v; ADD.pick = null; ADD.q = ''; rerender(); });
-  const head = h('div', { class: 'row between wrap' }, h('h3', null, 'Ajouter un repas'), h('div', { class: 'row wrap' }, h('button', { class: 'btn small ghost', onclick: () => mealText(d) }, 'Écrire le repas'), h('button', { class: 'btn small ghost', onclick: () => quickEntry(d) }, 'Saisie rapide')));
-  const meal = sel(MEALS, ADD.meal, { 'aria-label': 'Repas', onchange: e => { ADD.meal = e.target.value; ADD.mealAt = Date.now(); rerender(); } });
-  if (ADD.mode === 'recipe') return h('section', { class: 'card' }, head, tabs, h('div', { class: 'row wrap' }, meal),
-    N().recipes.length ? h('div', { class: 'list' }, N().recipes.map(r => { const tt = recipeTotals(r); return h('div', { class: 'item' }, h('div', { class: 'grow' }, h('b', null, r.name), h('small', { class: 'muted' }, ` · ${fmtK(tt.kcal)} kcal, ${fmtNum(tt.p)} g prot. par portion`)), h('button', { class: 'btn small', onclick: () => addRecipe(r, d, ADD.meal) }, 'Ajouter')); })) : h('div', { class: 'empty' }, 'Aucune recette. Crée-en une dans l\'onglet Recettes, ou transforme un repas en recette.'));
-  if (ADD.mode === 'off') return h('section', { class: 'card' }, head, tabs, offPanel(d, meal));
+  // version sobre (1er novembre 2026) : un seul champ de recherche, le repas à côté du titre, les autres façons derrière « Autres façons »
+  const meal = sel(MEALS, ADD.meal, { 'aria-label': 'Repas', class: 'meal-sel', onchange: e => { ADD.meal = e.target.value; ADD.mealAt = Date.now(); rerender(); } });
+  const head = h('div', { class: 'row between add-head' }, h('h3', null, 'Ajouter'), meal);
+  const autres = h('details', { class: 'more autres' }, h('summary', null, 'Autres façons'), h('div', { class: 'row wrap' },
+    h('button', { class: 'btn small ghost', onclick: () => mealText(d) }, 'Écrire le repas en une phrase'),
+    h('button', { class: 'btn small ghost', onclick: () => quickEntry(d) }, 'Juste les calories'),
+    h('button', { class: 'btn small ghost', onclick: () => { ADD.mode = 'recipe'; ADD.pick = null; ADD.q = ''; rerender(); } }, 'Une de mes recettes'),
+    h('button', { class: 'btn small ghost', onclick: () => { ADD.mode = 'off'; ADD.pick = null; ADD.q = ''; rerender(); } }, 'Produit emballé ou code-barres')));
+  const retour = h('button', { class: 'btn small ghost', onclick: () => { ADD.mode = 'food'; ADD.pick = null; ADD.q = ''; rerender(); } }, '‹ Chercher un aliment');
+  if (ADD.mode === 'recipe') return h('section', { class: 'card add-card' }, head, retour,
+    N().recipes.length ? h('div', { class: 'list' }, N().recipes.map(r => { const tt = recipeTotals(r); return h('div', { class: 'item' }, h('div', { class: 'grow' }, h('b', null, r.name), h('small', { class: 'muted' }, ` · ${fmtK(tt.kcal)} kcal, ${fmtNum(tt.p)} g prot. par portion`)), h('button', { class: 'btn small', onclick: () => addRecipe(r, d, ADD.meal) }, 'Ajouter')); })) : h('div', { class: 'empty' }, 'Aucune recette. Crée-en une dans Repas et recettes, ou transforme un repas en recette (⋯).'));
+  if (ADD.mode === 'off') return h('section', { class: 'card add-card' }, head, retour, offPanel(d, null));
   let list = [];
-  const q = h('input', { type: 'search', id: 'n-search', value: ADD.q, autocomplete: 'off', 'aria-label': 'Chercher un aliment', placeholder: 'Chercher un aliment (saumon, lentilles, œuf dur...)',
+  const q = h('input', { type: 'search', id: 'n-search', value: ADD.q, autocomplete: 'off', 'aria-label': 'Chercher un aliment', placeholder: 'Chercher un aliment : saumon, pâtes, œuf…', class: 'add-q',
     oninput: e => { ADD.q = e.target.value; ADD.pick = null; ADD.sel = -1; drawRes(); },
     onkeydown: e => { // flèches pour parcourir les résultats, Entrée pour choisir
       if (!list.length) return;
@@ -481,7 +525,7 @@ function addPanel(d) {
   if (ADD.focusQ) { ADD.focusQ = false; setTimeout(() => { if (q.isConnected) q.focus({ preventScroll: true }); }, 0); }
   const ck = picked ? versionCuite(picked, allFoods(), normName) : null, ports = picked ? portionsOf(picked) : [];
   const setG = v => { ADD.g = String(v); g.value = ADD.g; g.focus(); };
-  return h('section', { class: 'card add-card' }, head, tabs, redoBlock(d), h('div', { class: 'row wrap' }, meal, q), res,
+  return h('section', { class: 'card add-card' }, head, q, res, ADD.q.trim() || picked ? null : redoBlock(d),
     picked ? h('div', { class: 'pick-row' },
       h('div', { class: 'row wrap' }, h('b', { class: 'grow' }, picked.n), h('button', { class: 'btn small ghost', onclick: () => foodSheet(picked, num(ADD.g) || 100) }, 'Fiche'), h('button', { class: 'icon', 'aria-label': 'Choisir un autre aliment', onclick: () => { ADD.pick = null; ADD.focusQ = true; rerender(); } }, '×')),
       ck ? h('p', { class: 'small unk' }, 'Pesé cru ? Si tu as pesé cuit, prends plutôt ', h('button', { class: 'btn small ghost', onclick: () => { ADD.pick = ck.id; ADD.q = ck.n; ADD.g = String(defaultG(ck)); ADD.focusG = true; rerender(); } }, shortName(ck.n) + ', cuit'), ' : les grammes changent du simple au double.') : null,
@@ -489,7 +533,7 @@ function addPanel(d) {
       h('div', { class: 'row wrap' }, g, h('small', { class: 'muted' }, 'g'),
         [50, 100].map(n => h('button', { class: 'btn small ghost', onclick: () => setG(num(g.value) + n) }, `+ ${n} g`)),
         h('button', { class: 'btn ghost', onclick: () => { const v = num(ADD.g || g.value); if (v <= 0) return toast('Mets une quantité'); const f = picked; ADD.pick = null; ADD.q = ''; ADD.g = ''; ADD.focusQ = true; plateAdd(f, v); } }, 'Sur l\'assiette'),
-        h('button', { class: 'btn', onclick: add }, `Ajouter au ${ADD.meal.toLowerCase()}`))) : null);
+        h('button', { class: 'btn', onclick: add }, `Ajouter au ${ADD.meal.toLowerCase()}`))) : null, picked ? null : autres);
 }
 /* ----- assiette : plusieurs aliments posés, notés d'un coup (une écriture, un message « Annuler ») ----- */
 // le champ de recherche se vide et garde le focus : on tape tout de suite l'aliment suivant
@@ -739,4 +783,60 @@ async function scanBarcode(onCode) {
     const loop = async () => { if (!video.isConnected) off(); if (stop) return; try { const c = await det.detect(video); if (c.length) { stop = true; stream.getTracks().forEach(t => t.stop()); close(); onCode(c[0].rawValue); return; } } catch { /* image pas prête */ } setTimeout(loop, 300); };
     loop();
   } catch (e) { toast(`Caméra indisponible : ${e.message}`); close(); }
+}
+
+/* ----- historique (1er novembre 2026) : les jours à venir d'abord (un essai ou une erreur s'efface d'un geste), puis les jours passés ----- */
+const HIST = { n: 30, q: '' };
+function vueHistorique(root) {
+  const td = today(), q = norm(HIST.q.trim());
+  const jours = [...new Set([...Object.keys(N().log), ...Object.keys(N().plan)])].filter(d => (N().log[d] || []).length || (N().plan[d] || []).length).sort().reverse();
+  const match = d => !q || [...(N().log[d] || []), ...(N().plan[d] || [])].some(e => norm(e.name || '').includes(q));
+  const futurs = jours.filter(d => d > td && match(d)), passes = jours.filter(d => d <= td && match(d));
+  const ouvrir = d => { nDay = d; location.hash = '#/nutri/jour'; };
+  const ligne = (d, e, quoi) => h('div', { class: 'item' }, h('div', { class: 'grow' }, e.name, h('small', { class: 'muted' }, e.n ? ' · saisie rapide' : ` · ${fmtNum(e.g)} g · ${entryKcal(e)} kcal${quoi === 'plan' ? ' · prévu' : ''}`)),
+    h('button', { class: 'icon', 'aria-label': `Retirer ${e.name}`, onclick: () => { const src = quoi === 'plan' ? N().plan : N().log, r = garde(src, d); src[d] = (src[d] || []).filter(x => x !== e); if (!src[d].length) delete src[d]; save(); rerender(); undoable(`${shortName(e.name)} retiré`, r); } }, '×'));
+  const carteJour = (d, futur) => {
+    const es = N().log[d] || [], pl = N().plan[d] || [], kc = sum(es, e => entryN(e).kcal || 0);
+    const parRepas = MEALS.map(m => [m, es.filter(e => e.meal === m), pl.filter(e => e.meal === m)]).filter(x => x[1].length || x[2].length);
+    return h('section', { class: `card${futur ? ' alertcard' : ''}` }, h('div', { class: 'row between wrap' },
+      h('div', null, h('b', null, d === td ? `Aujourd'hui, ${dateLabel(d)}` : dateLabel(d)), h('small', { class: 'muted' }, es.length ? ` · ${fmtK(kc)} kcal` : '', pl.length ? ` · ${pl.length} prévu(s)` : '')),
+      h('div', { class: 'row' }, h('button', { class: 'btn small ghost', onclick: () => ouvrir(d) }, 'Ouvrir'), h('button', { class: 'btn small danger', 'aria-label': `Effacer le ${dateLabel(d)}`, onclick: () => effacerJour(d) }, 'Effacer le jour'))),
+      futur ? parRepas.map(([m, a, b]) => h('div', { class: 'group' }, h('small', { class: 'muted up' }, m), a.map(e => ligne(d, e, 'log')), b.map(e => ligne(d, e, 'plan'))))
+        : h('details', { class: 'more' }, h('summary', null, parRepas.map(([m, a]) => `${m} : ${[...new Set(a.map(e => shortName(e.name)))].slice(0, 3).join(', ')}${a.length > 3 ? '…' : ''}`).filter(x => !/: $/.test(x)).join(' · ') || 'Prévu seulement'),
+          parRepas.map(([m, a, b]) => h('div', { class: 'group' }, h('small', { class: 'muted up' }, `${m} · ${fmtK(sum(a, e => entryN(e).kcal || 0))} kcal`), a.map(e => ligne(d, e, 'log')), b.map(e => ligne(d, e, 'plan'))))));
+  };
+  put(root,
+    h('div', { class: 'row wrap' }, inp('search', HIST.q, { 'aria-label': 'Chercher dans mes repas', placeholder: 'Chercher dans mes repas (saumon, pâtes…)', oninput: e => { HIST.q = e.target.value; HIST.n = 30; rerender(); }, id: 'hist-q' })),
+    futurs.length ? h('h3', null, `À venir · ${futurs.length} jour${futurs.length > 1 ? 's' : ''}`) : null,
+    ...futurs.map(d => carteJour(d, true)),
+    h('h3', null, 'Mes repas'),
+    passes.length ? null : h('div', { class: 'empty' }, q ? 'Aucun repas ne contient ce mot.' : 'Rien de noté pour l\'instant. Chaque repas noté apparaît ici, jour par jour.'),
+    ...passes.slice(0, HIST.n).map(d => carteJour(d, false)),
+    passes.length > HIST.n ? h('button', { class: 'btn small ghost', onclick: () => { HIST.n += 30; rerender(); } }, `Voir plus (${passes.length - HIST.n} jours)`) : null);
+}
+
+/* Changer les quantités d'un repas noté (1er novembre 2026) : chaque ingrédient en grammes, en retirer, en ajouter. Plus de fromage, moins de
+   pâtes : les calories, macros et micros suivent. Une seule écriture, un seul « Annuler ». */
+function ajusterEntrees(d, es, meal) {
+  const st = { items: es.filter(e => !e.n).map(e => ({ ref: e, food: e.food, name: e.name, g: e.g })), q: '' }, body = h('div', { class: 'form' });
+  if (!st.items.length) return toast('Une saisie rapide se supprime et se refait');
+  const draw = () => {
+    const t = totalsOf(st.items.map(i => ({ food: i.food, g: i.g, name: i.name })), null), res = h('div', { class: 'results' });
+    const q = inp('search', st.q, { placeholder: 'Ajouter un ingrédient (fromage, huile…)', 'aria-label': 'Ajouter un ingrédient', oninput: e => { st.q = e.target.value; liste(); } });
+    const liste = () => res.replaceChildren(h('div', { class: 'list' }, (st.q.trim() ? searchFoods(st.q, 6) : []).map(f => h('button', { class: 'pick-line', onclick: () => { st.items.push({ food: f.id, name: f.n, g: defaultG(f) }); st.q = ''; draw(); } }, h('span', null, f.n), h('small', { class: 'muted' }, foodMeta(f))))));
+    fill(body, h('div', { class: 'list' }, st.items.map((i, ix) => h('div', { class: 'item' }, h('div', { class: 'grow' }, shortName(i.name), h('small', { class: 'muted' }, ` · ${entryKcal({ food: i.food, g: i.g })} kcal`)),
+      inp('text', String(i.g), { inputmode: 'decimal', class: 'lim', 'aria-label': `Grammes de ${i.name}`, onchange: e => { const v = num(e.target.value); if (v > 0) i.g = r2(v); draw(); } }), h('small', null, 'g'),
+      h('button', { class: 'icon', 'aria-label': `Retirer ${i.name}`, onclick: () => { st.items.splice(ix, 1); draw(); } }, '×')))),
+      q, res, h('p', { class: 'small' }, h('b', null, `${fmtK(t.kcal)} kcal`), ` · protéines ${fmtG(t.p)} g · glucides ${fmtG(t.c)} g · lipides ${fmtG(t.f)} g`));
+    liste();
+  };
+  draw();
+  modal(`${meal || es[0].meal} : quantités`, body, [{ label: 'Enregistrer', run: () => {
+    const rs = [garde(N().log, d), garde(N(), 'lastG')], rest = (N().log[d] || []).filter(x => !es.includes(x) || x.n);
+    const now = Date.now(), m0 = es[0].meal, rep = es.find(e => e.repas);
+    const keep = st.items.map(i => i.ref ? Object.assign(i.ref, { g: i.g }) : { id: uid(), t: now, meal: m0, food: i.food, name: i.name, g: i.g, repas: rep ? rep.repas : undefined });
+    N().log[d] = [...rest, ...keep]; if (!N().log[d].length) delete N().log[d];
+    for (const i of st.items) N().lastG[i.food] = i.g;
+    save(); rerender(); undoable('Quantités enregistrées', rs);
+  } }]);
 }

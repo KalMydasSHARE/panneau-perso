@@ -182,7 +182,7 @@ function alerts() {
   const fen = N().menu.rythme === 'fenetre' ? N().menu.fenetre : null, finFen = fen ? Math.min(24, fen.de + fen.h) : 0;
   if (!nd && !(fen && now.getHours() < finFen)) out.push(['warn', "Aucun repas noté aujourd'hui", '#/nutri/jour']);
   else if (nd.micro < 60) out.push(['warn', `Micros à ${fmtPct(nd.micro, 0)} aujourd'hui`, '#/nutri/jour']);
-  if (waterOf(td) < waterTarget() * 0.5 && now.getHours() >= 15) out.push(['warn', `Eau : ${fmtNum(waterOf(td) / 1000)} L sur ${fmtNum(waterTarget() / 1000)}`, '#/nutri/jour']);
+  if (blocVisible('nutri.jour', 'eau') && waterOf(td) < waterTarget() * 0.5 && now.getHours() >= 15) out.push(['warn', `Eau : ${fmtNum(waterOf(td) / 1000)} L sur ${fmtNum(waterTarget() / 1000)}`, '#/nutri/jour']);
   for (const a of ulAlerts(td)) out.push([a.type === 'NS' ? 'warn' : 'bad', `${a.nom} : ${ulText(a)}`, '#/nutri/jour']);
   if (!CIQUAL_OK()) out.push(['bad', 'Base d\'aliments non chargée : les repas notés ne comptent pas leurs valeurs', '#/nutri/sources']);
   if (P().timer) out.push(['warn', 'Une session de focus est en cours', '#/plan/jour']);
@@ -198,14 +198,15 @@ MODULES.home = {
     const nd = nutriDay(td), al = alerts(), best = activeHabits().map(hb => ({ hb, s: streak(hb) })).sort((x, y) => y.s - x.s)[0], f = N().fast;
     const wo = P().workouts.filter(x => x.date >= weekStart(td)).reduce((a, x) => a + x.min, 0), ah = activeHabits(), force = ah.length ? sum(ah, x => strength(x)) / ah.length : null;
     // Panneau court (31 octobre 2026) : en haut, seulement ce qui se fait maintenant ; les chiffres d'ensemble sont repliés (état retenu)
+    // blocs à la carte (1er novembre 2026) : Personnaliser cet écran, en bas
+    const blocs = [['rapide', 'Actions rapides', () => quickBar()], ['maintenant', 'Maintenant (tâches et alertes)', () => maintenantCard(td, al)],
+      ['menu', 'Menu du jour', () => (typeof menuCarte === 'function' ? menuCarte({ compact: true }) : null)], // la prochaine proposition, « Je le mange » en un geste
+      ['habitudes', 'Habitudes du jour', () => todayHabitsCard(td)], ['ensemble', "Vue d'ensemble", () => foldCard('home-vue', "Vue d'ensemble", () => [vueEnsemble()], { cls: 'vue-plus' })]];
     put(root,
       h('h2', null, `Bonjour Kal, ${dateLabel(td)}`),
-      quickBar(),
-      maintenantCard(td, al),
       backupNag(),
-      typeof menuCarte === 'function' ? menuCarte({ compact: true }) : null, // menu du jour : la prochaine proposition, « Je le mange » en un geste
-      todayHabitsCard(td),
-      foldCard('home-vue', "Vue d'ensemble", () => [vueEnsemble()], { cls: 'vue-plus' }));
+      ...blocsEcran('home', blocs),
+      boutonEcran('home', 'Panneau', blocs));
     function vueEnsemble() { return h('div', { class: 'view' },
       h('div', { class: 'grid4' },
         h('button', { class: 'card stat click', onclick: () => disciplineModal(td), 'aria-label': 'Discipline du jour : voir le calcul' }, h('small', null, 'Discipline du jour'), h('div', { class: 'big' }, discTxt(disciplineDay(td))), h('small', { class: 'muted' }, disciplineDay(td) === null ? 'rien de prévu aujourd\'hui' : 'toucher pour le calcul')),
