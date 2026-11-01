@@ -18,6 +18,56 @@ function targets() { // repères du profil (data/drv.js), puis calories et macro
   return { ...DEFAULT_TARGETS, ...rdaSet(), ...(auto || {}), ...(N().targets || {}) };
 }
 const KEYS = [...MACROS, ...EXTRAS, ...MICROS, ...DETAILS].map(m => m[0]);
+/* Équilibre de la semaine (1er novembre 2026). Les macros n'ont pas de réserve comme les vitamines, sauf l'énergie : des calories en trop
+   deviennent de la graisse (le glycogène, environ 400 g, se remplit avant), des calories en moins la prennent. Ce qui compte pour le poids,
+   c'est le bilan sur plusieurs jours, pas un jour. Donc :
+   - calories : l'écart des 6 jours notés d'avant se rattrape doucement, un tiers par jour, 15 % du repère au plus (10 % pour remonter en
+     gardant son poids). Selon l'objectif du profil : perdre ou garder, un excès se compense ; garder ou prendre, un manque se rattrape ;
+     perdre, un manque ne se rattrape pas (il va dans le sens voulu) ; prendre, un excès ne se compense pas. Le repli vient des glucides
+     (60 %) et des lipides (40 %) ;
+   - protéines et fibres : pas de réserve, ni à compenser ni à rattraper, le repère de chaque jour reste entier ;
+   - graisses saturées et sel : la limite vaut pour la semaine (7 fois la limite du jour) ; un jour au-dessus fait baisser celle des jours
+     suivants, jamais sous la moitié. Un jour non noté compte à la limite.
+   Réglage du menu « Équilibrer sur la semaine » (oui par défaut). */
+function equilibre(d) {
+  if (N().menu.equilibre === false) return null;
+  // gardé tant que les 6 jours d'avant, les repères et l'objectif ne changent pas (demandé plusieurs fois par écran)
+  let cle = d + '|' + JSON.stringify(targets()) + '|' + ((typeof PF === 'function' && PF().goal) || 0);
+  for (let i = 1; i <= 6; i++) for (const e of N().log[addDays(d, -i)] || []) cle += `|${i}:${e.food || e.name}:${e.g}:${e.n ? e.n.kcal : ''}`;
+  if (equilibre.c && equilibre.c.cle === cle) return equilibre.c.v;
+  const v = equilibreCalc(d); equilibre.c = { cle, v }; return v;
+}
+function equilibreCalc(d) {
+  const tg = targets(), goal = (typeof PF === 'function' && PF().goal) || 0, jours = [];
+  for (let i = 1; i <= 6; i++) { const x = addDays(d, -i); if ((N().log[x] || []).length) jours.push(dayTotals(x)); }
+  if (!jours.length) return null;
+  const ecart = sum(jours, t => (t.kcal || 0) - tg.kcal);
+  let dk = 0;
+  if (ecart > 0 && goal <= 0) dk = -Math.min(ecart / 3, 0.15 * tg.kcal);
+  else if (ecart < 0 && goal >= 0) dk = Math.min(-ecart / 3, (goal > 0 ? 0.15 : 0.10) * tg.kcal);
+  dk = Math.round(dk / 10) * 10; if (Math.abs(dk) < 50) dk = 0;
+  const vide = 6 - jours.length, semaine = (k, L) => Math.max(0.5 * L, Math.min(L, 7 * L - sum(jours, t => t[k] || 0) - vide * L));
+  return { ecart, dk, goal, jours: jours.length, sat: semaine('sat', limitOf('sat')), salt: semaine('salt', limitOf('salt')) };
+}
+// repères d'un jour, équilibre de la semaine compris (calories, glucides, lipides ; protéines et micros inchangés)
+function targetsJour(d) {
+  const tg = targets(), e = equilibre(d);
+  if (!e || !e.dk) return tg;
+  return { ...tg, kcal: tg.kcal + e.dk, c: Math.max(0, Math.round(tg.c + (e.dk * 0.6) / 4)), f: Math.max(0, Math.round(tg.f + (e.dk * 0.4) / 9)) };
+}
+// limite du jour pour les graisses saturées et le sel : celle de la semaine si l'équilibre est actif
+const limitJour = (k, d) => { const e = equilibre(d); return e && (k === 'sat' || k === 'salt') ? e[k] : limitOf(k); };
+function equilibreTxt(e, tg0) {
+  if (!e) return null;
+  const out = [];
+  if (e.dk < 0) out.push(`Ces ${e.jours} derniers jours notés : ${fmtK(e.ecart)} kcal de plus que ton repère. Aujourd'hui ${fmtK(-e.dk)} kcal de moins (un tiers de l'écart, 15 % au plus), pris sur les glucides et les lipides.`);
+  else if (e.dk > 0) out.push(`Ces ${e.jours} derniers jours notés : ${fmtK(-e.ecart)} kcal de moins que ton repère. Aujourd'hui ${fmtK(e.dk)} kcal de plus pour ${e.goal > 0 ? 'prendre comme prévu' : 'garder ton poids'}.`);
+  else if (e.ecart > 0 && e.goal > 0) out.push('Calories au-dessus de ton repère ces derniers jours : tu veux prendre, rien à compenser.');
+  else if (e.ecart < 0 && e.goal < 0) out.push('Calories sous ton repère ces derniers jours : tu veux perdre, rien à rattraper.');
+  if (e.sat < limitOf('sat') - 0.5) out.push(`Graisses saturées au-dessus de la limite cette semaine : ${fmtG(e.sat)} g au plus aujourd'hui (au lieu de ${fmtG(limitOf('sat'))}).`);
+  if (e.salt < limitOf('salt') - 0.05) out.push(`Sel au-dessus de la limite cette semaine : ${fmtNum(e.salt)} g au plus aujourd'hui (au lieu de ${fmtNum(limitOf('salt'))}).`);
+  return out.length ? out.join(' ') : null;
+}
 
 function entryN(e) {
   if (e.n) return e.n;
@@ -239,10 +289,10 @@ const entryKcal = e => { const k = entryN(e).kcal; return k === undefined ? '?' 
 /* Journée, version sobre (31 octobre 2026) : le bilan, le menu, noter, ce que j'ai mangé, l'eau. Le reste (macros en détail, micros, compléments,
    jeûne, quoi manger) est replié, un toucher l'ouvre et l'état est retenu. Un jeûne en cours reste visible. */
 function vueNJour(root) {
-  const d = nDay, tg = targets(), t = dayTotals(d), entries = N().log[d] || [], mp = microPct(t, tg), frag = fragile(t), ul = ulAlerts(d);
+  const d = nDay, tg = targetsJour(d), t = dayTotals(d), entries = N().log[d] || [], mp = microPct(t, tg), frag = fragile(t), ul = ulAlerts(d);
   const unkMark = k => (t.unk[k] ? h('small', { class: 'unk', title: `Valeur inconnue pour ${t.unk[k]} aliment(s)` }, ' ?') : null);
   const bar = (k, label) => h('div', { class: 'macro' }, h('div', { class: 'row between' }, h('small', null, label, unkMark(k)), h('small', null, `${fmtG(t[k])} / ${fmtG(tg[k])} g`)), progress((t[k] / tg[k]) * 100, k === 'p' ? 'gold' : ''));
-  const limit = (k, label) => { const L = limitOf(k); return h('div', { class: 'macro' }, h('div', { class: 'row between' }, h('small', null, `${label} (à ne pas dépasser)`, unkMark(k)), h('small', { class: t[k] > L ? 'neg' : '' }, `${fmtG(t[k])} / ${fmtG(L)} g`)), progress((t[k] / L) * 100, t[k] > L ? 'bad' : t[k] > L * 0.8 ? 'warn' : '')); };
+  const limit = (k, label) => { const L = limitJour(k, d); return h('div', { class: 'macro' }, h('div', { class: 'row between' }, h('small', null, `${label} (à ne pas dépasser)`, unkMark(k)), h('small', { class: t[k] > L ? 'neg' : '' }, `${fmtG(t[k])} / ${fmtG(L)} g`)), progress((t[k] / L) * 100, t[k] > L ? 'bad' : t[k] > L * 0.8 ? 'warn' : '')); };
   const quick = entries.filter(e => e.n).length;
   put(root, dayNav(d, v => { nDay = v; ADD.pick = null; rerender(); }),
     !CIQUAL_OK() ? h('section', { class: 'card' }, h('p', { class: 'neg' }, `Base d'aliments non chargée (${CIQUAL_CHARGE.err || 'raison inconnue'}). Les repas notés ne comptent pas leurs valeurs. Recharge la page.`)) : null,
@@ -263,6 +313,8 @@ function jourBlocs(d, x) {
     // bilan du haut : un toucher ouvre les calories et macros en détail, dans la même carte (1er novembre 2026)
     ['bilan', 'Bilan du jour (calories et macros)', () => dayBand(t, tg, microPct(t, tgM), () => [
       h('div', { class: 'row between' }, h('small', { class: 'muted' }, t.kcal < tg.kcal ? `Reste ${fmtK(tg.kcal - t.kcal)} kcal` : `${fmtK(t.kcal - tg.kcal)} kcal au-dessus`), ring((t.kcal / tg.kcal) * 100, fmtPct((t.kcal / tg.kcal) * 100, 0))),
+      equilibreTxt(equilibre(d)) ? h('p', { class: 'small equi' }, h('b', null, 'Équilibre de la semaine. '), equilibreTxt(equilibre(d))) : null,
+      t.kcal > tg.kcal * 1.05 && N().menu.equilibre !== false && (PF().goal || 0) <= 0 ? h('small', { class: 'muted block' }, 'Au-dessus aujourd\'hui : pas de souci, les jours suivants rattraperont doucement (un tiers par jour). Protéines et vitamines : rien à rattraper.') : null,
       t.unk.kcal ? h('p', { class: 'unk small' }, `${t.unk.kcal} aliment(s) sans énergie publiée (${fmtK(t.unkG.kcal)} g) : pas comptés, le vrai total est plus haut.`) : null,
       bar('p', 'Protéines'), bar('c', 'Glucides'), bar('f', 'Lipides'), bar('fib', 'Fibres'),
       limit('sat', 'AG saturés'), limit('salt', 'Sel'), h('small', { class: 'muted' }, `Sucres : ${fmtG(t.sug)} g`, unkMark('sug')), detailsBox(t)])],
@@ -317,6 +369,7 @@ function dayBand(t, tg, mp, detail) {
   const tete = [h('div', { class: 'row between wrap' },
     h('div', null, h('b', { class: 'big' }, fmtK(t.kcal)), t.unk.kcal ? h('span', { class: 'unk', title: 'Une partie des aliments n\'a pas d\'énergie publiée' }, ' ?') : null, h('small', { class: 'muted' }, ` / ${fmtK(tg.kcal)} kcal`)),
     h('small', { class: 'muted' }, `Protéines ${fmtG(t.p)} / ${fmtG(tg.p)} g · micros ${fmtPct(mp, 0)}`)),
+  tg.kcal !== targets().kcal ? h('small', { class: 'muted block' }, `Repère ajusté sur la semaine : ${tg.kcal > targets().kcal ? '+' : '−'}${fmtK(Math.abs(tg.kcal - targets().kcal))} kcal (au lieu de ${fmtK(targets().kcal)})`) : null,
   !ouvert && t.unk.kcal ? h('small', { class: 'unk block' }, `${t.unk.kcal} aliment(s) sans énergie publiée : le vrai total est plus haut.`) : null,
   progress((t.kcal / tg.kcal) * 100, t.kcal > tg.kcal * 1.1 ? 'warn' : 'gold')];
   if (!detail) return h('section', { class: 'card band' }, tete);

@@ -121,9 +121,9 @@ function mnPourCreneau(r, s, info) {
 }
 /* ---------- le calcul ---------- */
 function menuCalcule(date, mode = 'reste') {
-  const t0 = performance.now(), K = mnKeys(), L = K.keys.length, info = mnRepasInfo(), cx = prefsCtx(), tgO = targets(), R = reservesEtat();
+  const t0 = performance.now(), K = mnKeys(), L = K.keys.length, info = mnRepasInfo(), cx = prefsCtx(), tgO = targetsJour(date), R = reservesEtat();
   const tg = new Float64Array(L);
-  K.keys.forEach((k, i) => { tg[i] = k === 'salt' ? limitOf('salt') : k === 'sat' ? limitOf('sat') : tgO[k] || 0; });
+  K.keys.forEach((k, i) => { tg[i] = k === 'salt' ? limitJour('salt', date) : k === 'sat' ? limitJour('sat', date) : tgO[k] || 0; }); // équilibre de la semaine compris
   const tgD = Float64Array.from(tg); // repères entiers, pour l'affichage
   // réserve comptée (1er novembre 2026) : ce que la réserve estimée couvre déjà n'est pas redemandé au menu (réglage du menu, oui par défaut)
   if (R && N().menu.reserves !== false) for (let i = 0; i < K.nMic; i++) { const x = R.n[K.keys[i]]; if (x && x.etat) tg[i] *= facteurReserve(x.etat); } // en réserve : 0 ; basse : à remplir
@@ -324,7 +324,7 @@ function menuDuJour(date = today(), mode = 'reste') {
   if (!REPAS_OK() || !FLAGS_OK() || !CIQUAL_OK() || !STATE) return null;
   const slots = mnCreneaux(date, mode).map(s => s.etat + (s.apresJeune ? '+' : '') + (s.matin || '') + (s.encore ? '*' : '')).join(','), R = reservesEtat(), plans = [];
   for (let i = -3; i <= 0; i++) plans.push(JSON.stringify(N().plan[addDays(date, i)] || []));
-  const sig = [date, mode, slots, prefsCtx().sig, JSON.stringify(N().menu), JSON.stringify(targets()), R ? R.sig : '', plans.join(''), ciqualFoods().length, N().fast ? N().fast.start + N().fast.goal : 0].join('|');
+  const sig = [date, mode, slots, prefsCtx().sig, JSON.stringify(N().menu), JSON.stringify(targetsJour(date)), R ? R.sig : '', plans.join(''), ciqualFoods().length, N().fast ? N().fast.start + N().fast.goal : 0].join('|');
   const key = date + '|' + mode, c = MN_CACHE.get(key);
   if (c && c.sig === sig) return c.res;
   const res = menuCalcule(date, mode);
@@ -522,6 +522,7 @@ function menuCarte({ compact = false } = {}) {
         h('label', { class: 'daybox' }, h('input', { type: 'checkbox', checked: !!N().menu.sansCuisson, onchange: e => { N().menu = { ...N().menu, sansCuisson: e.target.checked }; save(); rerender(); } }), 'Sans cuisson'),
         h('label', { class: 'daybox' }, h('input', { type: 'checkbox', checked: N().menu.mesRepas !== false, onchange: e => { N().menu = { ...N().menu, mesRepas: e.target.checked }; save(); rerender(); } }), `Mes repas seulement (${(PR().repasOui || []).length} choisis ★)`),
         h('label', { class: 'daybox' }, h('input', { type: 'checkbox', checked: N().menu.reserves !== false, onchange: e => { N().menu = { ...N().menu, reserves: e.target.checked }; save(); rerender(); } }), 'Compter mes réserves'),
+        h('label', { class: 'daybox' }, h('input', { type: 'checkbox', checked: N().menu.equilibre !== false, onchange: e => { N().menu = { ...N().menu, equilibre: e.target.checked }; save(); rerender(); } }), 'Équilibrer sur la semaine'),
         N().menu.rythme === 'fenetre' ? null : [h('small', { class: 'muted' }, 'Le matin :'), seg([['petit', 'Un petit truc d\'abord'], ['repas', 'Un repas']], N().menu.matin || 'petit', v => { const r = garde(N(), 'menu'); N().menu = { ...N().menu, matin: v }; save(); rerender(); undoable(v === 'petit' ? 'Le matin : un petit truc d\'abord' : 'Le matin : un repas', r); })]),
       rythmeReglage(),
       h('small', { class: 'muted block' }, 'Mes repas : choisis-les avec ☆ dans la fiche d\'un repas ou dans Repas et recettes. Le menu ne propose qu\'eux pour un créneau où tu en as choisi. Réserves : ce que ta réserve estimée couvre déjà n\'est pas redemandé aujourd\'hui.'),
@@ -540,7 +541,7 @@ function mnLigneCombler(o, d, plein) {
 }
 // Ce qui reste à combler aujourd'hui, en une phrase : calories, protéines, les micros les plus en retard (besoin du jour, réserve comptée)
 function mnResteTxt(res) {
-  const t = dayTotals(today()), tg0 = targets(), tg = targetsReserve(tg0) || tg0;
+  const t = dayTotals(today()), tg0 = targetsJour(today()), tg = targetsReserve(tg0) || tg0;
   const bas = MICROS_AVG.filter(m => tg[m[0]] > 0 && (t[m[0]] || 0) / tg[m[0]] < 0.6).sort((a, b) => (t[a[0]] || 0) / tg[a[0]] - (t[b[0]] || 0) / tg[b[0]]).slice(0, 3).map(m => mnNom(m[0]));
   return `Il te reste ${fmtK(Math.max(0, res.budget.kcal))} kcal, ${fmtG(Math.max(0, res.budget.p))} g de protéines${bas.length ? `. Manque surtout : ${mnListe(bas)}` : ''}.`; // court : sur téléphone, plus de 110 signes se replient
 }
@@ -549,7 +550,7 @@ function mnResteTxt(res) {
    par la réserve), en tenant le reste des calories ; mes repas (★) passent devant ; les premiers ne se ressemblent pas (mnVarie). */
 function mnCombler(n = 5, slotK = null) {
   if (!REPAS_OK() || !FLAGS_OK() || !CIQUAL_OK()) return null;
-  const td = today(), t = dayTotals(td), tg0 = targets(), tg = targetsReserve(tg0) || tg0, K = mnKeys(), info = mnRepasInfo(), cx = prefsCtx(), oui = new Set(PR().repasOui || []);
+  const td = today(), t = dayTotals(td), tg0 = targetsJour(td), tg = targetsReserve(tg0) || tg0, K = mnKeys(), info = mnRepasInfo(), cx = prefsCtx(), oui = new Set(PR().repasOui || []);
   const res = menuDuJour(td, 'reste'), ouverts = res ? res.slots.filter(s => s.etat === 'ouvert') : [], tous = ouverts.length ? ouverts : MN_CRENEAUX;
   const slots = slotK ? tous.filter(s => s.k === slotK) : tous, sumPart = sum(tous, s => s.part) || 1, skip = new Set(slots.flatMap(s => [...(MN_SESSION.autres[`${td}|${s.k}`] || [])]));
   const recent = new Set(); for (let i = 1; i <= 3; i++) for (const e of N().log[addDays(td, -i)] || []) if (e.repas) recent.add(e.repas);

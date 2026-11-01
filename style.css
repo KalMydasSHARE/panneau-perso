@@ -705,3 +705,4 @@ details.band>summary::-webkit-details-marker{display:none}
 .band-detail{margin-top:.8rem;border-top:1px solid var(--line);padding-top:.8rem}
 .prop.combler:not(.first){background:transparent;border:1px solid var(--line)}
 .prop.combler .prop-nom{text-align:left}
+.equi{margin:.4rem 0;padding:.55rem .7rem;border-radius:12px;background:var(--fill);border:1px solid var(--line)}
