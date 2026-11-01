@@ -376,6 +376,7 @@ function mnDetail(o, opts = {}) {
     const q = inp('search', st.q, { placeholder: 'Ajouter un ingrédient (fromage, huile…)', 'aria-label': 'Ajouter un ingrédient au repas', oninput: e => { st.q = e.target.value; liste(); } });
     const liste = () => res.replaceChildren(h('div', { class: 'list' }, (st.q.trim() ? searchFoods(st.q, 6) : []).map(f => h('button', { class: 'pick-line', onclick: () => { st.items.push({ food: f.id, g: defaultG(f) }); st.q = ''; st.change = true; draw(); } }, h('span', null, f.n), h('small', { class: 'muted' }, foodMeta(f))))));
     fill(body,
+      mnPrixTag(st.items, 'grand'),
       h('small', { class: 'muted' }, `${(REPAS.meta.creneaux[m.creneau] || m.creneau)} · ${m.min} min · ${m.seul ? 'un seul aliment' : (REPAS.meta.cuisines[m.cuisine] || m.cuisine).toLowerCase()}${m.cru ? ' · cru' : m.cuisson ? '' : ' · sans cuisson'}${m.shelton ? ' · bien combiné' : ''}${m.sport ? ' · riche en protéines' : ''}`),
       h('div', { class: 'row' }, h('button', { class: `btn small ${mnOui(m) ? '' : 'ghost'}`, 'aria-pressed': mnOui(m) ? 'true' : 'false', onclick: () => { mnBasculeOui(m); draw(); } }, mnOui(m) ? '★ Dans mes repas' : '☆ Je suis prêt à le manger')),
       seg(MN_PORTIONS.map(([n, c]) => [String(c), n]), st.change ? '' : String(st.coef), v => { st.coef = +v; st.items = mnItems(m, st.coef); st.change = false; draw(); }),
@@ -388,7 +389,7 @@ function mnDetail(o, opts = {}) {
         f ? h('button', { class: 'icon info', 'aria-label': `Fiche de ${f.n}`, onclick: () => foodSheet(f, i.g) }, 'ⓘ') : null,
         h('button', { class: 'icon', 'aria-label': `Retirer ${f ? f.n : i.food}`, onclick: () => { st.items.splice(ix, 1); st.change = true; draw(); } }, '×')); })),
       q, res,
-      h('p', { class: 'small' }, h('b', null, `${fmtK(t.kcal)} kcal`), ` · protéines ${fmtG(t.p)} g · glucides ${fmtG(t.c)} g · lipides ${fmtG(t.f)} g`),
+      h('p', { class: 'small' }, h('b', null, `${fmtK(t.kcal)} kcal`), ` · protéines ${fmtG(t.p)} g · glucides ${fmtG(t.c)} g · lipides ${fmtG(t.f)} g `, mnPrixTag(st.items)),
       h('small', { class: 'muted block' }, mic.map(x => `${x.x[1]} ${mnPct(x.part)}${t.unk[x.x[0]] ? ' (au moins)' : ''}`).join(' · ')),
       px ? prixLigne(px) : null,
       m.prep ? h('p', { class: 'small' }, m.prep) : null,
@@ -411,13 +412,14 @@ function mnDetail(o, opts = {}) {
 /* ---------- la carte « Menu du jour » ---------- */
 const MN_ETAT_TXT = { mange: 'noté', passe: 'heure passée', jeune: 'pendant ton jeûne', prevu: 'prévu' };
 const mnPortionTxt = o => (o.portion === 'normale' ? 'Portion normale' : o.portion === 'petite' ? 'Petite portion' : o.portion === 'grande' ? 'Grande portion' : 'À ma façon');
-const mnPrixTxt = o => { const p = typeof prixRepas === 'function' ? prixRepas(mnItems(o.m, o.coef)) : null; return p && p.chf > 0 ? ` · ${p.part < 1 ? 'au moins ' : '≈ '}${fmtCHF(p.chf)}` : ''; };
+// Prix d'une proposition : pastille dorée à côté du nom (« dès » quand un ingrédient n'a pas de prix relevé)
+const mnPrixTag = (items, cls = '') => { const p = typeof prixRepas === 'function' ? prixRepas(items) : null; return p && p.chf > 0 ? h('span', { class: `prix-tag ${cls}`, title: p.part < 1 ? `Au moins : sans prix pour ${p.sans.join(', ')}` : 'Prix pour une personne, au plus bas de Migros, Coop ou Denner' }, `${p.part < 1 ? 'dès ' : ''}${fmtCHF(p.chf)}`) : null; };
 // Proposition complète : nom, portion, phrase, micros, et les cinq gestes (compact : Panneau, « Je le mange », « Autre », « Voir »)
 function mnLigne(o, d, compact) {
   const vr = o.vr;
   return h('div', { class: 'prop first' },
-    h('div', { class: 'prop-head' }, h('button', { class: 'prop-nom', onclick: () => mnDetail(o, { menu: true, date: d }), 'aria-label': `Voir les ingrédients : ${o.m.nom}` }, h('b', null, o.m.nom)),
-      h('small', { class: 'muted block' }, `${mnPortionTxt(o)} · ${fmtK(o.kcal)} kcal · ${fmtG(o.p)} g de protéines · ${o.m.min} min${mnPrixTxt(o)}`)),
+    h('div', { class: 'prop-head' }, h('div', { class: 'row between nom-prix' }, h('button', { class: 'prop-nom', onclick: () => mnDetail(o, { menu: true, date: d }), 'aria-label': `Voir les ingrédients : ${o.m.nom}` }, h('b', null, o.m.nom)), mnPrixTag(mnItems(o.m, o.coef))),
+      h('small', { class: 'muted block' }, `${mnPortionTxt(o)} · ${fmtK(o.kcal)} kcal · ${fmtG(o.p)} g de protéines · ${o.m.min} min`)),
     compact ? null : h('small', { class: 'why' }, o.phrase),
     h('div', { class: 'chips' }, o.top.map(x => h('span', { class: 'chip ok', title: x.inconnu ? 'Au moins : un ingrédient n\'a pas de valeur publiée' : 'Part de ton repère du jour' }, `${MICROS.find(m => m[0] === x.k)[1]} ${x.part > 3 ? (x.inconnu ? 'au moins 300 %' : 'plus de 300 %') : (x.inconnu ? 'au moins ' : '') + mnPct(x.part)}`)),
       vr.v === 'a_verifier' ? h('span', { class: 'chip unk', title: FOODFLAGS.meta.avertissement }, `à vérifier : ${vr.doute.map(t => flagNom(t).toLowerCase()).join(', ')}`) : null,
@@ -432,7 +434,7 @@ function mnLigne(o, d, compact) {
 // Proposition en une ligne : nom (la fiche s'ouvre d'un geste), calories, « Je le mange »
 function mnLigneCourte(o, d) {
   return h('div', { class: 'prop court' }, h('div', { class: 'grow' }, h('button', { class: 'prop-nom', onclick: () => mnDetail(o, { menu: true, date: d }), 'aria-label': `Voir les ingrédients : ${o.m.nom}` }, o.m.nom),
-    h('small', { class: 'muted block' }, `${mnPortionTxt(o)} · ${fmtK(o.kcal)} kcal${mnPrixTxt(o)}`)),
+    h('small', { class: 'muted block' }, `${mnPortionTxt(o)} · ${fmtK(o.kcal)} kcal `, mnPrixTag(mnItems(o.m, o.coef), 'petit'))),
     h('button', { class: 'btn small', 'aria-label': `Je le mange : ${o.m.nom}, ${mnPortionTxt(o).toLowerCase()}`, onclick: () => mnManger(o, d) }, 'Je le mange'));
 }
 // Explication honnête d'un micro qui reste bas malgré la meilleure combinaison (REPAS.md, section 4)
@@ -553,7 +555,7 @@ function vueBibliotheque() {
   const list2 = h('div', { class: 'list' }, list.map(m => { const vr = verdictRepas(m, cx), mi = info.get(m.id), meal = MN_CRENEAUX.find(c => c.k === m.creneau).meal;
     const o = { m, vr, coef: 1, portion: 'normale', meal, slot: m.creneau, kcal: mi.kcal, p: mi.vec[mnKeys().iP], top: [], phrase: '' };
     return h('div', { class: `item${vr.v === 'exclu' ? ' dim' : ''}` }, h('div', { class: 'grow click', onclick: () => mnDetail(o), title: 'Voir les ingrédients' }, h('b', null, m.nom),
-      h('small', { class: 'muted' }, ` · ${m.seul ? 'un seul aliment' : meal.toLowerCase()}${m.cru ? ' · cru' : ''}${m.shelton ? ' · bien combiné' : ''} · ${m.min} min · ${fmtK(mi.kcal)} kcal · ${fmtG(o.p)} g prot.`),
+      h('small', { class: 'muted' }, ` · ${m.seul ? 'un seul aliment' : meal.toLowerCase()}${m.cru ? ' · cru' : ''}${m.shelton ? ' · bien combiné' : ''} · ${m.min} min · ${fmtK(mi.kcal)} kcal · ${fmtG(o.p)} g prot. `), mnPrixTag(mnItems(m, 1), 'petit'),
       vr.v === 'exclu' ? h('small', { class: 'neg block' }, `Exclu : ${vr.pourquoi.slice(0, 2).join(' ; ')}`) : vr.v === 'a_verifier' ? h('small', { class: 'unk block' }, `À vérifier : ${vr.doute.map(t => flagNom(t).toLowerCase()).join(', ')}`) : null),
       h('button', { class: `icon star${mnOui(m) ? ' on' : ''}`, 'aria-pressed': mnOui(m) ? 'true' : 'false', title: 'Je suis prêt à le manger', 'aria-label': `${mnOui(m) ? 'Retirer de mes repas' : 'Je suis prêt à le manger'} : ${m.nom}`, onclick: () => mnBasculeOui(m) }, mnOui(m) ? '★' : '☆'),
       vr.v === 'exclu' ? null : h('button', { class: 'btn small', 'aria-label': `Je le mange : ${m.nom}`, onclick: () => mnManger(o) }, 'Je le mange'),

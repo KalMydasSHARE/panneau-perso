@@ -317,11 +317,13 @@ function dayBand(t, tg, mp) {
 }
 // Ce que j'ai mangé, par repas, avec « Copier vers… » et la suppression qui s'annule
 function eatenCard(d, entries) {
-  return h('section', { class: 'card' }, h('div', { class: 'row between wrap' }, h('h3', null, 'Ce que j\'ai mangé'),
+  const coutJour = typeof prixRepas === 'function' ? prixRepas(entries.filter(e => e.food)) : null;
+  return h('section', { class: 'card' }, h('div', { class: 'row between wrap' }, h('h3', null, 'Ce que j\'ai mangé', coutJour && coutJour.chf > 0 ? h('span', { class: 'prix-tag', title: 'Coût estimé de la journée, au plus bas de Migros, Coop ou Denner' }, `${coutJour.part < 1 ? 'dès ' : ''}${fmtCHF(coutJour.chf)}`) : null),
     h('button', { class: 'btn small ghost', onclick: () => copyFrom(d) }, 'Copier un autre jour')),
     entries.length ? MEALS.map(m => {
       const es = entries.filter(e => e.meal === m), unk = es.some(e => !e.n && entryN(e).kcal === undefined);
-      return es.length ? h('div', { class: 'group' }, h('div', { class: 'row between wrap' }, h('small', { class: 'muted up' }, `${m} · ${fmtK(sum(es, e => entryN(e).kcal || 0))}${unk ? ' + ?' : ''} kcal`),
+      const cout = typeof prixRepas === 'function' ? prixRepas(es.filter(e => e.food)) : null;
+      return es.length ? h('div', { class: 'group' }, h('div', { class: 'row between wrap' }, h('small', { class: 'muted up' }, `${m} · ${fmtK(sum(es, e => entryN(e).kcal || 0))}${unk ? ' + ?' : ''} kcal${cout && cout.chf > 0 ? ` · ${cout.part < 1 ? 'dès ' : ''}${fmtCHF(cout.chf)}` : ''}`),
         h('details', { class: 'gestes' }, h('summary', { 'aria-label': `Autres gestes pour le ${m.toLowerCase()}`, title: 'Copier, en faire une recette' }, '⋯'),
           h('div', { class: 'row' }, h('button', { class: 'btn small ghost', onclick: () => ajusterEntrees(d, es, m) }, 'Changer les quantités'), h('button', { class: 'btn small ghost', onclick: () => copyTo(d, m, es) }, 'Copier vers…'), h('button', { class: 'btn small ghost', onclick: () => saveAsRecipe(es, m) }, 'En faire une recette')))),
       es.map(e => { const f = e.food ? foodById(e.food) : null; return h('div', { class: 'item' }, h('div', { class: `grow${f ? ' click' : ''}`, onclick: f ? () => foodSheet(f, e.g) : null, title: f ? 'Voir la fiche' : null }, e.name, h('small', { class: 'muted' }, e.n ? ' · saisie rapide' : ` · ${f ? quantiteTexte(f, e.g) : fmtNum(e.g) + ' g'}`)), h('div', { class: 'right' }, `${entryKcal(e)} kcal`),
