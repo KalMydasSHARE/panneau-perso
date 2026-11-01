@@ -126,7 +126,7 @@ function menuCalcule(date, mode = 'reste') {
   K.keys.forEach((k, i) => { tg[i] = k === 'salt' ? limitOf('salt') : k === 'sat' ? limitOf('sat') : tgO[k] || 0; });
   const tgD = Float64Array.from(tg); // repères entiers, pour l'affichage
   // réserve comptée (1er novembre 2026) : ce que la réserve estimée couvre déjà n'est pas redemandé au menu (réglage du menu, oui par défaut)
-  if (R && N().menu.reserves !== false) for (let i = 0; i < K.nMic; i++) { const x = R.n[K.keys[i]], e = x && x.etat; if (e && e.plafond > 0 && e.reserveHier > 0) tg[i] *= Math.max(0, 1 - e.reserveHier); }
+  if (R && N().menu.reserves !== false) for (let i = 0; i < K.nMic; i++) { const x = R.n[K.keys[i]]; if (x && x.etat) tg[i] *= facteurReserve(x.etat); } // en réserve : 0 ; basse : à remplir
   // poids : 1 + 2 x urgence de la réserve (0 à 1) ; sans réserves chargées, tout pèse 1
   // visée : 100 % du repère ; un nutriment qui a une réserve et dont la moyenne des 7 derniers jours était basse vise jusqu'à 150 %
   // (le modèle compte l'excès d'un jour pour remplir la réserve, jusqu'à gainMax)
@@ -193,7 +193,7 @@ function menuCalcule(date, mode = 'reste') {
     s.nbCandidats = cands.length;
     const share = s.part / sumPart, slotK = Math.max(120, kRest * share);
     for (const c of cands) {
-      c.bonus = (oui.has(c.r.id) ? 0.03 : 0) + (c.vr.aime ? 0.03 : 0) - (c.vr.v === 'eviter' ? 0.05 : 0) - (c.vr.v === 'a_verifier' ? 0.01 : 0) - 0.03 * c.overlap;
+      c.bonus = saisonBonus(saisonDuRepas(c.r)) + (oui.has(c.r.id) ? 0.03 : 0) + (c.vr.aime ? 0.03 : 0) - (c.vr.v === 'eviter' ? 0.05 : 0) - (c.vr.v === 'a_verifier' ? 0.01 : 0) - 0.03 * c.overlap;
       let best = -Infinity;
       for (const [, coef] of MN_PORTIONS) {
         let rich = 0;
@@ -276,11 +276,12 @@ function mnVarie(rang) {
   return out.concat(reste);
 }
 // Filtres de style de la carte : seuls ceux qui ont au moins un repas dans le créneau sont montrés (le matin n'a pas les mêmes que le soir)
-const MN_STYLES = [['', 'Tous'], ['mes', 'Mes repas'], ['rapide', 'Rapide'], ['leger', 'Léger'], ['copieux', 'Copieux'], ['chaud', 'Chaud'], ['froid', 'Froid'], ['vege', 'Végé'], ['poisson', 'Poisson'], ['viande', 'Viande'], ['petitprix', 'Petit prix']];
+const MN_STYLES = [['', 'Tous'], ['saison', 'De saison'], ['mes', 'Mes repas'], ['rapide', 'Rapide'], ['leger', 'Léger'], ['copieux', 'Copieux'], ['chaud', 'Chaud'], ['froid', 'Froid'], ['vege', 'Végé'], ['poisson', 'Poisson'], ['viande', 'Viande'], ['petitprix', 'Petit prix']];
 function mnStyleOk(o, k) {
   const m = o.m, grand = o.slot === 'dejeuner' || o.slot === 'diner';
   switch (k) {
     case 'mes': return (PR().repasOui || []).includes(m.id);
+    case 'saison': { const sa = saisonRepas(o.items || mnItems(m, o.coef)); return sa.oui.length > 0 && !sa.non.length; }
     case 'rapide': return m.min <= 10;
     case 'leger': return o.kcal <= (grand ? 500 : 250);
     case 'copieux': return o.kcal >= (grand ? 750 : 400);
@@ -392,6 +393,7 @@ function mnDetail(o, opts = {}) {
       h('p', { class: 'small' }, h('b', null, `${fmtK(t.kcal)} kcal`), ` · protéines ${fmtG(t.p)} g · glucides ${fmtG(t.c)} g · lipides ${fmtG(t.f)} g `, mnPrixTag(st.items)),
       h('small', { class: 'muted block' }, mic.map(x => `${x.x[1]} ${mnPct(x.part)}${t.unk[x.x[0]] ? ' (au moins)' : ''}`).join(' · ')),
       px ? prixLigne(px) : null,
+      (() => { const sa = saisonRepas(st.items), mo = MOIS_NOMS[new Date().getMonth()]; return sa.oui.length || sa.non.length ? h('small', { class: 'block' }, sa.oui.length ? h('span', { class: 'pos' }, `De saison en ${mo} : ${sa.oui.join(', ')}. `) : null, sa.non.length ? h('span', { class: 'unk' }, `Hors saison en ${mo} : ${sa.non.join(', ')}.`) : null) : null; })(),
       m.prep ? h('p', { class: 'small' }, m.prep) : null,
       o.phrase ? h('small', { class: 'muted block' }, o.phrase) : null,
       m.seul ? h('small', { class: 'muted block' }, 'Un seul aliment de la base : ses valeurs sont celles de l\'aliment, source dans sa fiche (ⓘ).') : m.nature !== 'recette de l\'assistant' ? h('small', { class: 'unk block' }, 'Plat composé de la source : valeurs calculées par Ciqual ou l\'OSAV pour le plat entier, recette moyenne.') : null,
@@ -494,11 +496,17 @@ function menuCarte({ compact = false } = {}) {
     const s = ouverts[0], suite = ouverts.slice(1);
     /* La suite (1er novembre 2026) : dès qu'un repas est noté, chaque créneau restant montre sa meilleure proposition, choisie avec ce qui
        reste à combler (calories, protéines, micros, réserves). Rien à réfléchir : « Je le mange » à chaque ligne. */
-    if (res.mange) return h('section', { class: 'card menu-card' }, (head.firstChild.textContent = 'La suite de ta journée', head), choixMatin,
-      h('small', { class: 'muted block' }, mnResteTxt(res)),
-      slotBloc(s, true),
-      suite.filter(x => x.rang.length).map(x => { const skip = MN_SESSION.autres[`${td}|${x.k}`], o = x.rang.find(y => !skip || !skip.has(y.m.id)); return o ? h('div', { class: 'mn-slot suite' }, h('h4', null, x.label || x.meal), mnLigneCourte(o, td)) : null; }),
-      h('small', { class: 'muted block mn-jour' }, `Avec ces repas : environ ${fmtK(res.jour.kcal)} kcal sur ${fmtK(res.budget.tk)}, micros couverts en moyenne ${mnPct(res.jour.cov)}.`));
+    // La suite = les repas qui comblent le mieux ce qui manque (mnCombler), créneau par créneau : plus de liste « combler » à part
+    if (res.mange) {
+      const sty = MN_UI.style[s.k] || '', tout = mnCombler(30, s.k) || [], liste = tout.filter(o => mnStyleOk(o, sty)).slice(0, 3);
+      const styles = MN_STYLES.filter(([k]) => !k || k === sty || tout.filter(o => mnStyleOk(o, k)).length >= 2);
+      return h('section', { class: 'card menu-card' }, (head.firstChild.textContent = 'La suite de ta journée', head), choixMatin,
+        h('small', { class: 'muted block' }, mnResteTxt(res)),
+        h('div', { class: 'mn-slot' }, h('div', { class: 'row between wrap' }, h('h4', null, s.label || s.meal), s.facultatif ? h('small', { class: 'muted' }, 'facultative') : null),
+          styles.length > 2 ? h('div', { class: 'chips styles', role: 'group', 'aria-label': `Style pour le ${s.meal.toLowerCase()}` }, styles.map(([k, l]) => h('button', { class: `chip pick${k === sty ? ' sel' : ''}`, 'aria-pressed': k === sty ? 'true' : 'false', onclick: () => { MN_UI.style[s.k] = k; rerender(); } }, l))) : null,
+          liste.length ? liste.map((o, i) => mnLigneCombler(o, td, i === 0)) : h('p', { class: 'small muted' }, sty ? 'Rien dans ce style. Choisis « Tous ».' : 'Rien à proposer pour ce créneau.')),
+        suite.map(x => { const o = (mnCombler(1, x.k) || [])[0]; return o ? h('div', { class: 'mn-slot suite' }, h('h4', null, x.label || x.meal), mnLigneCombler(o, td, false)) : null; }));
+    }
     return h('section', { class: 'card menu-card' }, head, choixMatin, slotBloc(s, true), // version courte : ni phrase du budget ni explication, le détail est dans « Voir »
       h('div', { class: 'row wrap' }, h('a', { class: 'btn small ghost', href: '#/nutri/jour' }, suite.length ? `Ensuite : ${mnListe(suite.map(x => x.meal.toLowerCase()))}` : 'Voir la journée')));
   }
@@ -519,6 +527,17 @@ function menuCarte({ compact = false } = {}) {
       h('small', { class: 'muted block' }, 'Mes repas : choisis-les avec ☆ dans la fiche d\'un repas ou dans Repas et recettes. Le menu ne propose qu\'eux pour un créneau où tu en as choisi. Réserves : ce que ta réserve estimée couvre déjà n\'est pas redemandé aujourd\'hui.'),
       h('small', { class: 'muted block' }, 'Estimations faites avec la base d\'aliments et des modèles de repas écrits par l\'assistant : ce n\'est pas un avis médical. En cas d\'allergie grave, lis toujours l\'étiquette.')));
 }
+// Proposition « combler » : nom, prix, ce qu'elle comble, saison ; la première a « Autre » et « Voir »
+function mnLigneCombler(o, d, plein) {
+  const sa = saisonRepas(mnItems(o.m, o.coef));
+  return h('div', { class: `prop combler${plein ? ' first' : ''}` },
+    h('div', { class: 'row between nom-prix' }, h('button', { class: 'prop-nom', onclick: () => mnDetail(o, { menu: true, date: d }), 'aria-label': `Voir les ingrédients : ${o.m.nom}` }, plein ? h('b', null, o.m.nom) : o.m.nom), mnPrixTag(mnItems(o.m, o.coef), plein ? '' : 'petit')),
+    h('small', { class: 'muted block' }, `${mnPortionTxt(o)} · ${fmtK(o.kcal)} kcal${sa.oui.length && !sa.non.length ? ' · de saison' : ''}`),
+    o.parts.length ? h('div', { class: 'chips' }, o.parts.map(p => h('span', { class: 'chip ok' }, `${MICROS.find(m => m[0] === p.k)[1]} +${Math.round(Math.min(p.part, 9.99) * 100)} %`))) : null,
+    h('div', { class: 'row wrap prop-actions' }, h('button', { class: 'btn small', 'aria-label': `Je le mange : ${o.m.nom}`, onclick: () => mnManger(o, d) }, 'Je le mange'),
+      plein ? h('button', { class: 'btn small ghost', 'aria-label': `Autre proposition que ${o.m.nom}`, onclick: () => mnAutre(o, d) }, 'Autre') : null,
+      plein ? h('button', { class: 'btn small ghost', 'aria-label': `Voir les ingrédients : ${o.m.nom}`, onclick: () => mnDetail(o, { menu: true, date: d }) }, 'Voir') : null));
+}
 // Ce qui reste à combler aujourd'hui, en une phrase : calories, protéines, les micros les plus en retard (besoin du jour, réserve comptée)
 function mnResteTxt(res) {
   const t = dayTotals(today()), tg0 = targets(), tg = targetsReserve(tg0) || tg0;
@@ -528,23 +547,26 @@ function mnResteTxt(res) {
 /* Quoi manger pour combler (1er novembre 2026) : des REPAS de la bibliothèque, plus des aliments seuls (le foie sortait toujours en tête).
    Pour chaque repas permis par les préférences et qui va avec un créneau encore ouvert : la part du manque du jour qu'il comble (besoin réduit
    par la réserve), en tenant le reste des calories ; mes repas (★) passent devant ; les premiers ne se ressemblent pas (mnVarie). */
-function mnCombler(n = 5) {
+function mnCombler(n = 5, slotK = null) {
   if (!REPAS_OK() || !FLAGS_OK() || !CIQUAL_OK()) return null;
   const td = today(), t = dayTotals(td), tg0 = targets(), tg = targetsReserve(tg0) || tg0, K = mnKeys(), info = mnRepasInfo(), cx = prefsCtx(), oui = new Set(PR().repasOui || []);
-  const res = menuDuJour(td, 'reste'), ouverts = res ? res.slots.filter(s => s.etat === 'ouvert') : [], slots = ouverts.length ? ouverts : MN_CRENEAUX;
-  const need = [], kRest = Math.max(150, tg0.kcal - (t.kcal || 0));
+  const res = menuDuJour(td, 'reste'), ouverts = res ? res.slots.filter(s => s.etat === 'ouvert') : [], tous = ouverts.length ? ouverts : MN_CRENEAUX;
+  const slots = slotK ? tous.filter(s => s.k === slotK) : tous, sumPart = sum(tous, s => s.part) || 1, skip = new Set(slots.flatMap(s => [...(MN_SESSION.autres[`${td}|${s.k}`] || [])]));
+  const recent = new Set(); for (let i = 1; i <= 3; i++) for (const e of N().log[addDays(td, -i)] || []) if (e.repas) recent.add(e.repas);
+  const need = [], kTot = Math.max(150, tg0.kcal - (t.kcal || 0));
   for (let i = 0; i < K.nMic; i++) { const k = K.keys[i]; need[i] = tg[k] > 0 ? Math.max(0, tg[k] - (t[k] || 0)) : 0; }
   const besoin = need.reduce((a, x, i) => a + (x > 0 ? 1 : 0), 0); if (!besoin) return [];
   const cands = [];
   for (const r of REPAS.repas) {
-    if (!oui.has(r.id) && !!r.seul !== !!cx.p.seul) continue;
+    if (skip.has(r.id) || (!oui.has(r.id) && !!r.seul !== !!cx.p.seul)) continue;
     const s = slots.find(x => mnPourCreneau(r, x, info)); if (!s) continue;
     const vr = verdictRepas(r, cx); if (vr.v === 'exclu') continue;
-    const mi = info.get(r.id); let best = null;
+    // saison trois fois plus forte que dans le calcul de la journée : pas de tomates en novembre quand il y a mieux
+    const mi = info.get(r.id), kRest = Math.max(120, kTot * s.part / sumPart), bonusS = 3 * saisonBonus(saisonDuRepas(r)) - (recent.has(r.id) ? 0.05 : 0); let best = null;
     for (const [nom, coef] of MN_PORTIONS) {
       let g = 0; const parts = [];
       for (let i = 0; i < K.nMic; i++) { if (!need[i]) continue; const k = K.keys[i], a = Math.min(need[i], mi.vec[i] * coef); g += a / need[i]; if (a / tg0[k] >= 0.15) parts.push({ k, part: a / tg0[k] }); }
-      const kc = mi.kcal * coef, sc = g / besoin - Math.max(0, kc - kRest * 1.05) / kRest * 1.5 - Math.max(0, kRest * 0.25 - kc) / kRest * 0.3 + (oui.has(r.id) ? 0.05 : 0) + (vr.aime ? 0.03 : 0) - (vr.v === 'eviter' ? 0.05 : 0);
+      const kc = mi.kcal * coef, sc = g / besoin - Math.max(0, kc - kRest * 1.05) / kRest * 1.5 - Math.max(0, kRest * 0.25 - kc) / kRest * 0.3 + (oui.has(r.id) ? 0.05 : 0) + (vr.aime ? 0.03 : 0) - (vr.v === 'eviter' ? 0.05 : 0) + bonusS;
       if (!best || sc > best.sc) best = { sc, nom, coef, parts: parts.sort((a, b) => b.part - a.part).slice(0, 3), kc, p: mi.vec[K.iP] * coef };
     }
     cands.push({ sc: best.sc, o: { c: { r, vr, mi }, nom: best.nom, coef: best.coef, best, s } });

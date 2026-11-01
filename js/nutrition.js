@@ -280,18 +280,22 @@ function jourBlocs(d, x) {
         h('details', { class: 'more' }, h('summary', null, 'Tous les micronutriments'), microGrid(t, tgM, tgR ? tg : null)))], { cls: 'vue-plus' })],
     ['complements', 'Compléments', () => foldCard('n.supps', 'Compléments', () => [supplementsCard(d, ul)], { cls: 'vue-plus' })],
     ['jeune', 'Jeûne', () => (N().fast ? fastingCard() : foldCard('n.jeune', 'Jeûne', () => [fastingCard()], { cls: 'vue-plus' }))],
-    ['combler', 'Quoi manger pour combler', () => suggestPanel(t, tgM, entries.length > 0)]
-  ];
+  ]; // « Quoi manger pour combler » : c'est désormais la suite de la journée, dans la carte du menu (js/menu.js, mnCombler)
 }
-/* Besoin d'aujourd'hui une fois la réserve estimée comptée (js/reserves.js) : une réserve qui couvre au moins un jour ramène le besoin du
-   jour à ce qui manque. Seulement les réserves courtes et longues ; « quotidien » et « os » gardent leur repère entier. Réglage dans le menu. */
+/* Besoin d'aujourd'hui avec la réserve estimée (js/reserves.js), réglage « Compter mes réserves » du menu.
+   En réserve (au moins la moitié du plafond, 14 jours au plus) : rien à demander aujourd'hui. Réserve basse : on la remplit, le besoin monte
+   jusqu'à 1,3 fois le repère quand elle est vide (un jour à 130 % ajoute 0,3 jour de réserve). « Quotidien » et « os » : le repère entier. */
+function facteurReserve(e) {
+  if (!e || !(e.plafond > 0)) return 1;
+  const seuil = Math.max(1, Math.min(e.plafond / 2, 14));
+  return e.reserveHier >= seuil ? 0 : 1 + 0.3 * (1 - e.reserveHier / seuil);
+}
 function targetsReserve(tg) {
   if (N().menu.reserves === false || typeof reservesEtat !== 'function') return null;
   const R = reservesEtat(); if (!R || !R.debut) return null;
-  const out = { ...tg }; let any = false;
-  for (const m of MICROS) { const x = R.n[m[0]]; if (!x || !x.etat || !(x.etat.plafond > 0) || !(x.etat.reserveHier > 0) || !(tg[m[0]] > 0)) continue;
-    out[m[0]] = tg[m[0]] * Math.max(0, 1 - x.etat.reserveHier); any = true; }
-  return any ? out : null;
+  const out = { ...tg };
+  for (const m of MICROS) { const x = R.n[m[0]]; if (x && x.etat && tg[m[0]] > 0) out[m[0]] = tg[m[0]] * facteurReserve(x.etat); }
+  return out;
 }
 // Jour à venir : ce qui y est noté ou prévu s'efface d'un geste (un essai, une erreur)
 function futurBandeau(d) {
@@ -342,18 +346,18 @@ function removeEntry(d, e) {
   save(); rerender(); undoable(`${shortName(e.name)} retiré`, r);
 }
 // tgFull : le repère entier quand tg est le besoin du jour réduit par la réserve ; un micro couvert par la réserve le dit
-const rsvCouvre = (k, tg, tgFull) => tgFull && tgFull[k] > 0 && tg[k] < tgFull[k];
+const rsvCouvre = (k, tg, tgFull) => tgFull && tgFull[k] > 0 && tg[k] !== tgFull[k];
 function microLows(t, tg, tgFull) {
   const low = MICROS_AVG.map(m => ({ m, r: tg[m[0]] > 0 ? (t[m[0]] || 0) / tg[m[0]] : 1 })).sort((a, b) => a.r - b.r).slice(0, 4);
   return h('div', { class: 'list' }, h('small', { class: 'muted up' }, 'Les plus en retard'), low.map(x => h('div', { class: 'item click', onclick: () => sourcesModal(x.m) }, h('div', { class: 'grow' }, h('b', null, x.m[1]), t.unk && t.unk[x.m[0]] ? h('small', { class: 'unk', title: 'Valeur absente de la base pour certains aliments' }, ' ?') : null,
-    rsvCouvre(x.m[0], tg, tgFull) ? h('small', { class: 'muted' }, tg[x.m[0]] > 0 ? ` · besoin du jour ${fmtNum(tg[x.m[0]])} ${x.m[2]} sur ${fmtNum(tgFull[x.m[0]])}, la réserve couvre le reste` : ' · couvert par ta réserve') : null, progress(x.r * 100, covClass(x.r))), h('div', { class: 'right' }, fmtPct(Math.min(x.r, 9.99) * 100, 0)))));
+    rsvCouvre(x.m[0], tg, tgFull) ? h('small', { class: 'muted' }, tg[x.m[0]] > tgFull[x.m[0]] ? ` · réserve basse : ${fmtNum(tg[x.m[0]])} ${x.m[2]} pour la remplir` : ' · en réserve : rien à manger pour ça aujourd\'hui') : null, progress(x.r * 100, covClass(x.r))), h('div', { class: 'right' }, fmtPct(Math.min(x.r, 9.99) * 100, 0)))));
 }
 function microGrid(t, tg, tgFull) {
   const groups = [...new Set(MICROS.map(m => m[4]))];
   return h('div', null, groups.map(g => h('div', { class: 'group' }, h('small', { class: 'muted up' }, g),
     h('div', { class: 'micros' }, MICROS.filter(m => m[4] === g).map(m => { const v = t[m[0]] || 0, r = tg[m[0]] > 0 ? v / tg[m[0]] : 1, u = t.unk && t.unk[m[0]], rc = rsvCouvre(m[0], tg, tgFull);
       return h('div', { class: 'micro click', onclick: () => sourcesModal(m) }, h('div', { class: 'row between' }, h('b', null, m[1]), h('small', { class: covClass(r) + '-t' }, fmtPct(r * 100, 0))), progress(r * 100, covClass(r)),
-        h('small', { class: 'muted' }, rc ? `${fmtNum(v)} / ${fmtNum(tg[m[0]])} ${m[2]} aujourd'hui (repère ${fmtNum(tgFull[m[0]])}, réserve comptée)` : `${fmtNum(v)} / ${fmtNum(tg[m[0]])} ${m[2]}`), u ? h('small', { class: 'unk' }, ` · donnée absente pour ${u} aliment(s)`) : null,
+        h('small', { class: 'muted' }, !rc ? `${fmtNum(v)} / ${fmtNum(tg[m[0]])} ${m[2]}` : tg[m[0]] > 0 ? `${fmtNum(v)} / ${fmtNum(tg[m[0]])} ${m[2]} (réserve basse, repère ${fmtNum(tgFull[m[0]])})` : `${fmtNum(v)} ${m[2]} · en réserve, rien à manger pour ça aujourd'hui`), u ? h('small', { class: 'unk' }, ` · donnée absente pour ${u} aliment(s)`) : null,
         h('small', { class: 'src' }, refLabel(m[0]) + (m[5] ? ' · hors de la moyenne' : ''))); })))),
     h('small', { class: 'muted' }, 'Vitamine A comptée en RAE (bêta-carotène divisé par 12, comme les bases d\'aliments) : son repère est donc celui de la DGE/ÖGE, quelle que soit la source choisie. Détail dans Sources et méthode.'));
 }

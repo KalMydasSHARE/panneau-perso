@@ -703,3 +703,5 @@ details.band>summary{list-style:none;cursor:pointer;display:block}
 details.band>summary::-webkit-details-marker{display:none}
 .band-plus{margin-top:.45rem;text-align:center}
 .band-detail{margin-top:.8rem;border-top:1px solid var(--line);padding-top:.8rem}
+.prop.combler:not(.first){background:transparent;border:1px solid var(--line)}
+.prop.combler .prop-nom{text-align:left}
