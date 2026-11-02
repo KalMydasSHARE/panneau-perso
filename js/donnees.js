@@ -10,7 +10,7 @@ const DONNEES_CHARGE = { ms: {}, err: [] };
 const donneeOk = nom => (nom === 'REPAS' ? typeof REPAS : nom === 'FOODFLAGS' ? typeof FOODFLAGS : nom === 'ARBRE' ? typeof ARBRE : nom === 'PRIX' ? typeof PRIX : typeof RESERVES) !== 'undefined';
 const DONNEES_PRET = Promise.all(DONNEES_FICHIERS.map(([nom, src]) => donneeOk(nom) ? Promise.resolve() : new Promise(res => {
   const t0 = performance.now(), s = document.createElement('script');
-  s.src = src + '?v=12'; // même numéro que index.html : un téléphone recharge les données à chaque publication
+  s.src = src + '?v=13'; // même numéro que index.html : un téléphone recharge les données à chaque publication
   s.onload = () => { DONNEES_CHARGE.ms[src] = Math.round(performance.now() - t0); res(); };
   s.onerror = () => { DONNEES_CHARGE.err.push(src); res(); };
   document.head.append(s);

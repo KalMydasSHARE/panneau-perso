@@ -19,7 +19,9 @@ function bmr() {
   if (!p.weight || !p.height || a === null) return null;
   return 10 * p.weight + 6.25 * p.height - 5 * a + (p.sex === 'f' ? -161 : 5);
 }
-const tdee = () => { const b = bmr(); return b === null ? null : b * PF().act; };
+// marche de tous les jours (trajets à pied), en plus du niveau d'activité : marche 5 km/h, MET 3,5, soit 2,5 kcal par kg et par heure en plus du repos
+const marcheHabKcal = () => Math.round(2.5 * (PF().weight || 75) * ((PF().marcheJour || 0) / 60));
+const tdee = () => { const b = bmr(); return b === null ? null : b * PF().act + marcheHabKcal(); };
 function autoTargets() { // calories et macros calculés ; null tant que le profil est incomplet
   const t = tdee(); if (t === null) return null;
   const p = PF(), kcal = Math.round((t + p.goal) / 10) * 10;
@@ -142,6 +144,7 @@ function profileCard() {
     goalWeight: inp('text', p.goalWeight ? String(p.goalWeight) : '', { inputmode: 'decimal', placeholder: 'kg', onchange: up('goalWeight', num) }),
     act: sel(ACTS.map(x => [String(x[0]), x[1]]), String(p.act), { onchange: up('act', Number) }),
     goal: sel(GOALS.map(x => [String(x[0]), x[1]]), String(p.goal), { onchange: up('goal', Number) }),
+    marcheJour: inp('text', p.marcheJour ? String(p.marcheJour) : '', { inputmode: 'decimal', placeholder: 'min', onchange: up('marcheJour', x => num(x) || 0) }),
     weekMin: inp('text', String(p.weekMin), { inputmode: 'decimal', onchange: up('weekMin', x => num(x) || 150) }),
     drvSrc: sel([['efsa', 'Europe, EFSA (par défaut)'], ['dge', 'Allemagne et Autriche, DGE/ÖGE'], ['ch', 'Suisse, OSAV']], p.drvSrc || 'efsa', { onchange: up('drvSrc') }),
     phytate: sel([['300', 'Peu de céréales complètes et de légumineuses'], ['600', 'Alimentation mixte (par défaut)'], ['900', 'Beaucoup de céréales complètes et de légumineuses'], ['1200', 'Surtout végétal, céréales complètes non germées']],
@@ -152,7 +155,7 @@ function profileCard() {
     field('Ménopause', sel([['0', 'Avant la ménopause'], ['1', 'Après la ménopause']], p.menopause ? '1' : '0', { onchange: up('menopause', x => x === '1') }))] : [];
   return h('section', { class: 'card gold' }, h('h3', null, 'Mon profil'),
     h('p', { class: 'muted' }, 'Sert à calculer tes objectifs de calories, de protéines et d\'eau, et les repères de vitamines et minéraux. Reste sur cet appareil, chiffré.'),
-    h('div', { class: 'grid-form' }, field('Sexe', f.sex), field('Date de naissance', f.born), field('Taille (cm)', f.height), field('Poids (kg)', f.weight), field('Poids visé (kg)', f.goalWeight), field('Minutes de sport visées par semaine', f.weekMin, '150 est le repère de l\'OMS')),
+    h('div', { class: 'grid-form' }, field('Sexe', f.sex), field('Date de naissance', f.born), field('Taille (cm)', f.height), field('Poids (kg)', f.weight), field('Poids visé (kg)', f.goalWeight), field('Marche de tous les jours (min)', f.marcheJour, 'Trajets à pied, ajoutés à ta dépense. Garde alors le niveau d\'activité sans eux.'), field('Minutes de sport visées par semaine', f.weekMin, '150 est le repère de l\'OMS')),
     h('div', { class: 'form' }, field('Activité', f.act), field('Objectif', f.goal)),
     h('div', { class: 'grid-form', style: { marginTop: '.7rem' } }, field('Repères de', f.drvSrc), field('Phytates (céréales complètes, légumineuses)', f.phytate, 'Change le repère du zinc'), ...fem),
     typeof prefsLigne === 'function' ? prefsLigne() : null,

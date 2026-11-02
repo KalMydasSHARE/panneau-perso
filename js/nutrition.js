@@ -34,6 +34,7 @@ function equilibre(d) {
   // gardé tant que les 6 jours d'avant, les repères et l'objectif ne changent pas (demandé plusieurs fois par écran)
   let cle = d + '|' + JSON.stringify(targets()) + '|' + ((typeof PF === 'function' && PF().goal) || 0);
   for (let i = 1; i <= 6; i++) for (const e of N().log[addDays(d, -i)] || []) cle += `|${i}:${e.food || e.name}:${e.g}:${e.n ? e.n.kcal : ''}`;
+  for (const w of P().workouts) if (w.date >= addDays(d, -6) && w.date < d) cle += `|w${w.date}:${w.type}:${w.min}:${w.rpe}`;
   if (equilibre.c && equilibre.c.cle === cle) return equilibre.c.v;
   const v = equilibreCalc(d); equilibre.c = { cle, v }; return v;
 }
@@ -41,13 +42,14 @@ function equilibreCalc(d) {
   const tg = targets(), goal = (typeof PF === 'function' && PF().goal) || 0, jours = [];
   for (let i = 1; i <= 6; i++) { const x = addDays(d, -i); if ((N().log[x] || []).length) jours.push(dayTotals(x)); }
   if (!jours.length) return null;
-  const ecart = sum(jours, t => (t.kcal || 0) - tg.kcal);
+  // le sport noté ces 6 jours (Bouger, ou Plan, Sport) est dépensé en plus : il réduit un excès (2 novembre 2026)
+  const sport = sum(P().workouts.filter(w => w.date >= addDays(d, -6) && w.date < d), sportKcal), ecart = sum(jours, t => (t.kcal || 0) - tg.kcal) - sport;
   let dk = 0;
   if (ecart > 0 && goal <= 0) dk = -Math.min(ecart / 3, 0.15 * tg.kcal);
   else if (ecart < 0 && goal >= 0) dk = Math.min(-ecart / 3, (goal > 0 ? 0.15 : 0.10) * tg.kcal);
   dk = Math.round(dk / 10) * 10; if (Math.abs(dk) < 50) dk = 0;
   const vide = 6 - jours.length, semaine = (k, L) => Math.max(0.5 * L, Math.min(L, 7 * L - sum(jours, t => t[k] || 0) - vide * L));
-  return { ecart, dk, goal, jours: jours.length, sat: semaine('sat', limitOf('sat')), salt: semaine('salt', limitOf('salt')) };
+  return { ecart, dk, goal, sport, jours: jours.length, sat: semaine('sat', limitOf('sat')), salt: semaine('salt', limitOf('salt')) };
 }
 // repères d'un jour, équilibre de la semaine compris (calories, glucides, lipides ; protéines et micros inchangés)
 function targetsJour(d) {
@@ -319,6 +321,7 @@ function jourBlocs(d, x) {
       bar('p', 'Protéines'), bar('c', 'Glucides'), bar('f', 'Lipides'), bar('fib', 'Fibres'),
       limit('sat', 'AG saturés'), limit('salt', 'Sel'), h('small', { class: 'muted' }, `Sucres : ${fmtG(t.sug)} g`, unkMark('sug')), detailsBox(t)])],
     ['dette', 'À brûler (calories en trop)', () => (d === today() ? detteCarte(d) : null)],
+    ['bouger', 'Bouger (marche, course, vélo)', () => (d <= today() ? bougerCarte(d) : null)],
     ['menu', 'Menu du jour', () => (d === today() && typeof menuCarte === 'function' ? menuCarte({ compact: true }) : null)],
     ['ajouter', 'Ajouter un repas', () => addPanel(d)],
     ['mange', 'Ce que j\'ai mangé', () => eatenCard(d, entries)],
@@ -365,7 +368,27 @@ function detteCarte(d) {
     seg([[1, 'En 1 jour'], [3, '3 jours'], [7, '7 jours']], n, v => { STATE.settings.detteJours = v; save(); rerender(); }),
     h('div', { class: 'list' }, detteEquiv(parJour).map(e => h('div', { class: 'item' }, h('div', { class: 'grow' }, h('b', null, e.nom), h('small', { class: 'muted' }, ` · ${e.vit}`)),
       h('div', { class: 'right' }, h('b', null, fmtDuree(e.min)), e.pas ? h('small', { class: 'muted' }, ` · ${fmtK(e.pas)} pas`) : null)))),
-    h('small', { class: 'muted block' }, `${n > 1 ? `Par jour, pendant ${n} jours (${fmtK(parJour)} kcal par jour). ` : ''}Au choix, une seule activité. Note ta séance dans Plan, Sport : la dette baisse. Manger un peu moins la fait baisser aussi${(equilibre(d) || {}).dk < 0 ? ` : ton repère d'aujourd'hui est déjà baissé de ${fmtK(-equilibre(d).dk)} kcal, le sport en plus rattrape plus vite` : ''}.`));
+    h('small', { class: 'muted block' }, `${n > 1 ? `Par jour, pendant ${n} jours (${fmtK(parJour)} kcal par jour). ` : ''}Au choix, une seule activité. Note-la dans « Bouger » : la dette baisse. Manger un peu moins la fait baisser aussi${(equilibre(d) || {}).dk < 0 ? ` : ton repère d'aujourd'hui est déjà baissé de ${fmtK(-equilibre(d).dk)} kcal, le sport en plus rattrape plus vite` : ''}.`));
+}
+/* Bouger (2 novembre 2026) : noter vite une marche, une course (le train), un tour à vélo ; c'est une séance de Plan, Sport. Elle fait baisser
+   « À brûler » et compte dans l'équilibre de la semaine. La marche de tous les jours (trajets) se règle une fois : elle entre dans la dépense
+   du profil, donc dans le repère de chaque jour (js/profil.js, marcheHabKcal). */
+const BOUGE = { type: 'Marche' };
+function bougerCarte(d) {
+  const ws = P().workouts.filter(w => w.date === d), kc = sum(ws, sportKcal), mj = PF().marcheJour || 0;
+  const min = inp('text', '', { inputmode: 'decimal', placeholder: 'minutes', class: 'lim', 'aria-label': 'Minutes' });
+  const ajouter = () => { const m = num(min.value); if (!(m > 0)) { min.focus(); return; } const u = garde(P(), 'workouts'); P().workouts.push({ id: uid(), date: d, type: BOUGE.type, min: m, rpe: 3, note: '' }); save(); rerender(); undoable(`${BOUGE.type}, ${fmtNum(m)} min notée`, u); };
+  min.addEventListener('keydown', e => { if (e.key === 'Enter') ajouter(); });
+  const mjIn = inp('text', mj ? String(mj) : '', { inputmode: 'decimal', placeholder: '0', class: 'lim', 'aria-label': 'Marche de tous les jours en minutes', onchange: e => { STATE.profile.marcheJour = num(e.target.value) || 0; save(); rerender(); } });
+  return h('section', { class: 'card bouger' },
+    h('div', { class: 'row between' }, h('h3', null, d === today() ? 'Bouger aujourd\'hui' : 'Bouger ce jour'), kc ? h('b', null, `${fmtK(kc)} kcal`) : null),
+    seg([['Marche', 'Marche'], ['Course', 'Course'], ['Vélo', 'Vélo']], BOUGE.type, v => { BOUGE.type = v; rerender(); }),
+    h('div', { class: 'row' }, min, h('button', { class: 'btn small', onclick: ajouter }, 'Ajouter')),
+    ws.length ? h('div', { class: 'list' }, ws.map(w => h('div', { class: 'item' }, h('div', { class: 'grow' }, h('b', null, w.type), h('small', { class: 'muted' }, ` · ${fmtNum(w.min)} min`)),
+      h('div', { class: 'right' }, `${fmtK(sportKcal(w))} kcal`), h('button', { class: 'icon', 'aria-label': `Supprimer ${w.type}`, onclick: () => removeWorkout(w) }, '×')))) : null,
+    h('div', { class: 'row wrap' }, h('small', null, 'Je marche tous les jours'), mjIn, h('small', null, 'min')),
+    h('small', { class: 'muted block' }, mj ? `+${fmtK(marcheHabKcal())} kcal par jour dans ton repère. Profil : niveau d'activité sans ces trajets.` : 'Tes trajets à pied de tous les jours : réglés une fois, ajoutés à ton repère chaque jour.'),
+    h('small', { class: 'muted block' }, 'Ce que tu notes ici en plus fait baisser « À brûler » et compte dans l\'équilibre de la semaine.'));
 }
 /* Besoin d'aujourd'hui avec la réserve estimée (js/reserves.js), réglage « Compter mes réserves » du menu.
    En réserve (au moins la moitié du plafond, 14 jours au plus) : rien à demander aujourd'hui. Réserve basse : on la remplit, le besoin monte
