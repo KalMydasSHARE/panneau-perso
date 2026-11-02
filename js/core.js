@@ -252,6 +252,7 @@ const Vault = {
     // .prev garde le coffre tel qu'il était à l'ouverture de la session : une vraie version d'avant, pas celle d'il y a 200 ms
     if (!this.prevDone) { const prev = localStorage.getItem(VAULT_KEY); try { if (prev) localStorage.setItem(VAULT_KEY + '.prev', prev); } catch { /* place manquante : on garde au moins le coffre */ } this.prevDone = true; }
     try { localStorage.setItem(VAULT_KEY, out); } catch (e) { localStorage.removeItem(VAULT_KEY + '.prev'); localStorage.setItem(VAULT_KEY, out); }
+    if (typeof Serveur !== 'undefined') Serveur.apresEcriture(); // et sur le serveur perso, si l'appareil y est connecté
   },
   async changePassword(pw) {
     const salt = crypto.getRandomValues(new Uint8Array(16)), key = await this.derive(pw, salt, this.it);

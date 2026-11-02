@@ -21,6 +21,7 @@ function gate() {
       btn.disabled = true; await Vault.create(pw.value); start();
     } else {
       btn.disabled = true; btn.textContent = 'Vérification…';
+      await Serveur.tirer().catch(() => {}); // le coffre le plus récent du serveur, s'il y en a un
       let ok = false;
       try { ok = await Vault.unlock(pw.value); } catch (e) { btn.disabled = false; btn.textContent = 'Déverrouiller'; msg.textContent = e.message; return; }
       if (ok) return start();
@@ -32,7 +33,8 @@ function gate() {
   app.replaceChildren(h('div', { class: 'gate' }, h('div', { class: 'gate-box' },
     h('div', { class: 'logo' }, 'KAL MYDAS'), h('h1', null, 'Mon panneau'),
     first ? h('p', { class: 'muted' }, 'Premier lancement. Choisis un mot de passe : il chiffre tout ce que tu notes ici, sur cet appareil. Personne ne peut le retrouver à ta place, pas même moi. Fais un export de temps en temps (Réglages).') : h('p', { class: 'muted' }, 'Argent, plan de vie, nutrition. Rien n\'est lisible sans ton mot de passe.'),
-    pw, pw2, btn, msg)));
+    pw, pw2, btn, msg,
+    Serveur.connecte() ? null : h('button', { class: 'btn small ghost', style: { marginTop: '.8rem' }, onclick: () => Serveur.fenetre(async () => { const r = await Serveur.tirer(); toast(r === 'pris' ? 'Coffre récupéré du serveur' : r === 'vide' ? 'Rien encore sur le serveur' : 'Connecté'); gate(); }) }, 'Récupérer mon coffre depuis le serveur'))));
   setTimeout(() => pw.focus(), 50);
 }
 async function lock() {
@@ -298,6 +300,7 @@ MODULES.reglages = {
             BK.handle ? h('button', { class: 'btn small danger', onclick: forgetBackupDir }, 'Arrêter') : null),
           BK.handle ? h('small', { class: 'muted' }, `Dossier : ${BK.handle.name}${BK.state === 'attente' ? ', en attente de ton accord' : ''}`) : null)
           : h('p', { class: 'muted small' }, 'Ce navigateur ne permet pas d\'écrire dans un dossier choisi (Chrome et Edge sur ordinateur le permettent). Reste l\'export à la main.')),
+      serveurCard(),
       exportsCard(),
       h('section', { class: 'card' }, h('h3', null, 'Contenu'),
         h('p', { class: 'muted' }, `${STATE.argent.accounts.length} compte(s), ${STATE.argent.tx.length} transaction(s), ${STATE.argent.debts.length} dette(s), ${P().habits.length} habitude(s), ${P().tasks.length} tâche(s), ${P().goals.length} objectif(s), ${Object.keys(P().journal).length} jour(s) de journal, ${P().workouts.length} séance(s), ${Object.keys(N().log).length} jour(s) de repas, ${N().weights.length} pesée(s).`),
@@ -323,4 +326,5 @@ function wipe() {
   localStorage.removeItem(VAULT_KEY); localStorage.removeItem(VAULT_KEY + '.prev'); STATE = null; Vault.key = null; location.reload();
 }
 
-gate();
+// Au lancement : d'abord le coffre le plus récent du serveur (6 s au plus), puis le verrou
+Serveur.tirer().catch(() => {}).finally(gate);
