@@ -53,9 +53,16 @@ function equilibreCalc(d) {
 }
 // repères d'un jour, équilibre de la semaine compris (calories, glucides, lipides ; protéines et micros inchangés)
 function targetsJour(d) {
-  const tg = targets(), e = equilibre(d);
-  if (!e || !e.dk) return tg;
-  return { ...tg, kcal: tg.kcal + e.dk, c: Math.max(0, Math.round(tg.c + (e.dk * 0.6) / 4)), f: Math.max(0, Math.round(tg.f + (e.dk * 0.4) / 9)) };
+  const tg = targets(), e = equilibre(d), dk = (e ? e.dk : 0) + sportBonus(d);
+  if (!dk) return tg;
+  return { ...tg, kcal: tg.kcal + dk, c: Math.max(0, Math.round(tg.c + (dk * 0.6) / 4)), f: Math.max(0, Math.round(tg.f + (dk * 0.4) / 9)) };
+}
+/* Sport du jour (2 novembre 2026) : il paie d'abord la dette des jours d'avant (« À brûler ») ; ce qui reste s'ajoute aux calories du jour.
+   Objectif « prendre » : pas de dette, tout s'ajoute. */
+function sportBonus(d) {
+  const s = sum(P().workouts.filter(w => w.date === d), sportKcal); if (!s) return 0;
+  const x = detteCalc(d);
+  return Math.round(Math.max(0, s - (x ? x.passe : 0)) / 10) * 10;
 }
 // limite du jour pour les graisses saturées et le sel : celle de la semaine si l'équilibre est actif
 const limitJour = (k, d) => { const e = equilibre(d); return e && (k === 'sat' || k === 'salt') ? e[k] : limitOf(k); };
@@ -352,7 +359,8 @@ function detteCalc(d) {
   let ecart = 0;
   for (let i = 1; i <= 6; i++) { const x = addDays(d, -i); if ((N().log[x] || []).length) ecart += (dayTotals(x).kcal || 0) - k0; }
   const auj = Math.max(0, (dayTotals(d).kcal || 0) - k0), seances = P().workouts.filter(w => w.date >= de && w.date <= d), sport = sum(seances, sportKcal);
-  return { brut: ecart + auj, auj, sport, seances: seances.length, dette: Math.max(0, Math.round(ecart + auj - sport)) };
+  const passe = Math.max(0, ecart - sum(seances.filter(w => w.date < d), sportKcal)); // dette des jours d'avant, que le sport du jour paie d'abord
+  return { brut: ecart + auj, auj, sport, passe, seances: seances.length, dette: Math.max(0, Math.round(ecart + auj - sport)) };
 }
 const fmtDuree = m => { m = Math.max(5, Math.round(m / 5) * 5); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ' ' + String(m % 60).padStart(2, '0') : ''}`; };
 function detteEquiv(kcal) {
@@ -388,7 +396,7 @@ function bougerCarte(d) {
       h('div', { class: 'right' }, `${fmtK(sportKcal(w))} kcal`), h('button', { class: 'icon', 'aria-label': `Supprimer ${w.type}`, onclick: () => removeWorkout(w) }, '×')))) : null,
     h('div', { class: 'row wrap' }, h('small', null, 'Je marche tous les jours'), mjIn, h('small', null, 'min')),
     h('small', { class: 'muted block' }, mj ? `+${fmtK(marcheHabKcal())} kcal par jour dans ton repère. Profil : niveau d'activité sans ces trajets.` : 'Tes trajets à pied de tous les jours : réglés une fois, ajoutés à ton repère chaque jour.'),
-    h('small', { class: 'muted block' }, 'Ce que tu notes ici en plus fait baisser « À brûler » et compte dans l\'équilibre de la semaine.'));
+    h('small', { class: 'muted block' }, sportBonus(d) ? `+${fmtK(sportBonus(d))} kcal à manger en plus aujourd'hui (ton sport, une fois « À brûler » payé).` : 'Ton sport paie d\'abord « À brûler », le reste s\'ajoute à tes calories du jour.'));
 }
 /* Besoin d'aujourd'hui avec la réserve estimée (js/reserves.js), réglage « Compter mes réserves » du menu.
    En réserve (au moins la moitié du plafond, 14 jours au plus) : rien à demander aujourd'hui. Réserve basse : on la remplit, le besoin monte
@@ -425,7 +433,7 @@ function dayBand(t, tg, mp, detail) {
   const tete = [h('div', { class: 'row between wrap' },
     h('div', null, h('b', { class: 'big' }, fmtK(t.kcal)), t.unk.kcal ? h('span', { class: 'unk', title: 'Une partie des aliments n\'a pas d\'énergie publiée' }, ' ?') : null, h('small', { class: 'muted' }, ` / ${fmtK(tg.kcal)} kcal`)),
     h('small', { class: 'muted' }, `Protéines ${fmtG(t.p)} / ${fmtG(tg.p)} g · micros ${fmtPct(mp, 0)}`)),
-  tg.kcal !== targets().kcal ? h('small', { class: 'muted block' }, `Repère ajusté sur la semaine : ${tg.kcal > targets().kcal ? '+' : '−'}${fmtK(Math.abs(tg.kcal - targets().kcal))} kcal (au lieu de ${fmtK(targets().kcal)})`) : null,
+  tg.kcal !== targets().kcal ? h('small', { class: 'muted block' }, `Repère du jour ${fmtK(tg.kcal)} au lieu de ${fmtK(targets().kcal)} kcal : `, [[(equilibre(nDay) || {}).dk || 0, 'semaine'], [sportBonus(nDay), 'sport']].filter(x => x[0]).map(([v, l]) => `${v > 0 ? '+' : '−'}${fmtK(Math.abs(v))} ${l}`).join(', ')) : null,
   !ouvert && t.unk.kcal ? h('small', { class: 'unk block' }, `${t.unk.kcal} aliment(s) sans énergie publiée : le vrai total est plus haut.`) : null,
   progress((t.kcal / tg.kcal) * 100, t.kcal > tg.kcal * 1.1 ? 'warn' : 'gold')];
   if (!detail) return h('section', { class: 'card band' }, tete);
