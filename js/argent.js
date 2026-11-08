@@ -359,7 +359,7 @@ const BUDGET_TYPE = [
 // [nom, CHF par mois, fixe, note, mots qui disent que Kal a déjà cette ligne]
 const BUDGET_PRO = [
   ['Claude (Plan Max)', 195, true, 'claude.ai Max et recharges : 194,58 en mai 2026', /claude|anthropic/i],
-  ['Serveur de production', 0, true, 'le VPS de kalmydas : hébergeur et prix jamais notés', /serveur|vps|h[ée]bergement/i],
+  ['Serveur de production', 20, true, 'le VPS de kalmydas, 20 par mois (Kal, 8 nov 2026)', /serveur|vps|h[ée]bergement/i],
   ['VPS Interserver', 18, true, '2 slices à 9 (45 en mai avec 5 slices)', /interserver/i],
   ['Domaine kalmydas.com', 2, true, 'Swizzonic, environ 25 par an', /domaine|swizzonic/i],
   ['Toosie (marketing)', 90, false, 'payé 90 en mai 2026', /toosie/i],
