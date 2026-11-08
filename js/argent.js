@@ -332,7 +332,7 @@ function vueBudgetSuivi(root) {
 }
 
 /* ----- budget : le plan du mois (revenus, charges fixes, plafonds, dettes, épargne) puis le suivi ----- */
-const PL = () => (A().plan = A().plan || { income: [], fixed: {}, save: 0 });
+const PL = () => { const p = (A().plan = A().plan || { income: [], fixed: {}, save: 0 }); p.pro = p.pro || {}; return p; };
 // Budget type d'une personne seule en Suisse romande (CHF par mois, ordre de grandeur, novembre 2026). Kal corrige chaque ligne ensuite.
 const BUDGET_TYPE = [
   ['Logement', 1100, true, 'loyer et charges'],
@@ -355,13 +355,30 @@ const BUDGET_TYPE = [
   ['Cadeaux', 40, false, 'anniversaires, fêtes'],
   ['Imprévus', 100, false, 'réparations, amendes, oublis'],
 ];
-const NOTE_TYPE = Object.fromEntries(BUDGET_TYPE.map(x => [x[0], x[3]]));
+// Côté pro (Kal Mydas), d'après DOC/05_FINANCE/DASHBOARD_INVESTISSEURS.xlsx, onglets 02 et 12 (mai 2026, USD à 0,90). 0 = prix jamais noté, à remplir.
+// [nom, CHF par mois, fixe, note, mots qui disent que Kal a déjà cette ligne]
+const BUDGET_PRO = [
+  ['Claude (Plan Max)', 195, true, 'claude.ai Max et recharges : 194,58 en mai 2026', /claude|anthropic/i],
+  ['Serveur de production', 0, true, 'le VPS de kalmydas : hébergeur et prix jamais notés', /serveur|vps|h[ée]bergement/i],
+  ['VPS Interserver', 18, true, '2 slices à 9 (45 en mai avec 5 slices)', /interserver/i],
+  ['Domaine kalmydas.com', 2, true, 'Swizzonic, environ 25 par an', /domaine|swizzonic/i],
+  ['Toosie (marketing)', 90, false, 'payé 90 en mai 2026', /toosie/i],
+  ['Sultan (accompagnement)', 360, false, '400 USDC en mai, engagement 1500 USDC sans échéancier', /sultan/i],
+  ['Gas Base (opérations)', 0, false, 'frais de transaction des bots', /gas|gaz/i],
+];
+const MOTS_PRO = /claude|anthropic|serveur|vps|interserver|domaine|swizzonic|kal ?mydas|toosie|sultan|gas|gaz|openai|tenderly|ankr|plausible|audit|juridique/i;
+const NOTE_TYPE = Object.fromEntries([...BUDGET_TYPE, ...BUDGET_PRO].map(x => [x[0], x[3]]));
 function remplirBudgetType() {
   const pl = PL(), B = A().budgets, back = [garde(A(), 'budgets'), garde(A(), 'plan')];
-  let n = 0;
-  for (const [c, v, fixe] of BUDGET_TYPE) { if (B[c] > 0) continue; B[c] = v; if (fixe) pl.fixed[c] = true; else delete pl.fixed[c]; n++; }
-  if (!n) return toast('Toutes les lignes du budget type sont déjà remplies');
-  commit(); undoable(`${n} lignes posées : corrige les montants à ta réalité`, back);
+  let n = 0, np = 0;
+  for (const c of Object.keys(B)) if (MOTS_PRO.test(c)) pl.pro[c] = true; // tes lignes Kal Mydas déjà posées passent côté pro
+  for (const [c, v, fixe] of BUDGET_TYPE) { if (B[c] > 0) continue; B[c] = v; if (fixe) pl.fixed[c] = true; else delete pl.fixed[c]; delete pl.pro[c]; n++; }
+  for (const [c, v, fixe, , deja] of BUDGET_PRO) {
+    if (B[c] > 0 || Object.keys(B).some(k => k !== c && pl.pro[k] && deja.test(k))) continue;
+    B[c] = v; if (fixe) pl.fixed[c] = true; else delete pl.fixed[c]; pl.pro[c] = true; np++;
+  }
+  if (!n && !np) return toast('Toutes les lignes du budget type sont déjà remplies');
+  commit(); undoable(`${n} lignes perso et ${np} pro posées : corrige les montants à ta réalité`, back);
 }
 let budTab = 'plan';
 function history3() { // moyenne des trois derniers mois complets qui ont des mouvements
@@ -377,7 +394,8 @@ function vueBudget(root) {
   if (budTab === 'suivi') return vueBudgetSuivi(root);
   const pl = PL(), B = A().budgets, hist = history3();
   const catNames = [...new Set([...Object.keys(B), ...(hist ? Object.keys(hist.cats) : [])])];
-  const incTotal = sum(pl.income, i => i.amt), isFixed = c => !!pl.fixed[c];
+  const incTotal = sum(pl.income, i => i.amt), isFixed = c => !!pl.fixed[c], isPro = c => !!pl.pro[c];
+  const proTot = sum(catNames.filter(isPro), c => B[c] || 0);
   const fixedTot = sum(catNames.filter(isFixed), c => B[c] || 0), varTot = sum(catNames.filter(c => !isFixed(c)), c => B[c] || 0);
   const live = A().debts.filter(d => d.rest > 0);
   const debtTot = sum(live, d => d.pay || 0), debtNeed = sum(live, d => debtPlan(d).need || 0);
@@ -392,7 +410,7 @@ function vueBudget(root) {
         h('button', { class: 'btn', onclick: () => { if (hist.inc > 0) pl.income = [{ id: uid(), name: 'Entrées moyennes', amt: r2(hist.inc) }]; for (const [c, v] of Object.entries(hist.cats)) { B[c] = r2(v); if (/logement|loyer|abonnement|imp[oô]t|frais bancaires|assurance/i.test(c)) pl.fixed[c] = true; } commit(); toast('Plan rempli avec ta moyenne'); } }, 'Remplir avec ma moyenne'),
         h('button', { class: 'btn ghost', onclick: () => { for (const [c, v] of Object.entries(hist.cats)) if (!isFixed(c)) B[c] = r2(v * 0.9); commit(); toast('Variables à 90 % de ta moyenne'); } }, 'Serrer les variables de 10 %')))
       : h('p', { class: 'muted' }, 'Pas encore de mois complet saisi. Pose ton plan à la main, ou importe tes mouvements (onglet Transactions, Importer) pour partir de la réalité.'),
-    h('p', { class: 'muted' }, "Budget type : les charges fixes et les dépenses courantes d'une personne seule en Suisse romande, en ordre de grandeur. Les lignes déjà remplies ne bougent pas."),
+    h('p', { class: 'muted' }, "Budget type : côté perso, les charges fixes et les dépenses courantes d'une personne seule en Suisse romande (ordre de grandeur) ; côté pro, les dépenses Kal Mydas du tableau de l'agent comptable (Claude, serveurs, domaine, équipe). Les lignes déjà remplies ne bougent pas."),
     h('button', { class: 'btn ghost', onclick: remplirBudgetType }, 'Remplir avec un budget type')));
 
   // 2. revenus
@@ -407,15 +425,20 @@ function vueBudget(root) {
   const catRow = c => {
     const avg = hist && hist.cats[c] ? hist.cats[c] : 0;
     return h('div', { class: 'item' },
-      h('label', { class: 'daybox', title: 'Charge fixe : même montant chaque mois' }, h('input', { type: 'checkbox', checked: isFixed(c), onchange: e => { if (e.target.checked) pl.fixed[c] = true; else delete pl.fixed[c]; commit(); } }), 'fixe'),
-      h('div', { class: 'grow' }, h('b', null, c), avg ? h('small', { class: 'muted' }, ` moyenne réelle ${fmtMoney(avg, true)}`) : NOTE_TYPE[c] ? h('small', { class: 'muted' }, ` ${NOTE_TYPE[c]}`) : null),
+      h('div', { class: 'grow' }, h('b', null, c), avg ? h('small', { class: 'muted' }, ` moyenne réelle ${fmtMoney(avg, true)}`) : NOTE_TYPE[c] ? h('small', { class: 'muted' }, ` ${NOTE_TYPE[c]}`) : null,
+        h('div', { class: 'row', style: 'gap:6px;margin-top:4px' },
+          h('label', { class: 'daybox', title: 'Charge fixe : même montant chaque mois' }, h('input', { type: 'checkbox', checked: isFixed(c), onchange: e => { if (e.target.checked) pl.fixed[c] = true; else delete pl.fixed[c]; commit(); } }), 'fixe'),
+          h('label', { class: 'daybox', title: 'Dépense pro (Kal Mydas)' }, h('input', { type: 'checkbox', checked: isPro(c), onchange: e => { if (e.target.checked) pl.pro[c] = true; else delete pl.pro[c]; commit(); } }), 'pro'))),
       inp('text', B[c] ? String(B[c]) : '', { inputmode: 'decimal', placeholder: 'par mois', class: 'lim', onchange: e => { B[c] = Math.max(0, r2(num(e.target.value))); commit(); } }));
   };
   const nc = inp('text', '', { placeholder: 'Nouvelle ligne (loyer, assurance...)' }), nca = inp('text', '', { inputmode: 'decimal', placeholder: 'Par mois' });
   const sorted = catNames.slice().sort((a, b) => (isFixed(b) ? 1 : 0) - (isFixed(a) ? 1 : 0) || (B[b] || 0) - (B[a] || 0));
+  const groupe = (titre, cs) => { const f = sum(cs.filter(isFixed), c => B[c] || 0), v = sum(cs.filter(c => !isFixed(c)), c => B[c] || 0);
+    return cs.length ? h('div', null, h('div', { class: 'row between' }, h('h4', null, titre), h('b', null, money(f + v, true))),
+      h('small', { class: 'muted' }, `Fixes ${fmtMoney(f, true)} · variables ${fmtMoney(v, true)}`), h('div', { class: 'list' }, cs.map(catRow))) : null; };
   root.append(h('section', { class: 'card' }, h('div', { class: 'row between' }, h('h3', null, 'Dépenses par mois'), h('b', null, money(fixedTot + varTot, true))),
-    h('small', { class: 'muted' }, `Fixes ${fmtMoney(fixedTot, true)} · variables ${fmtMoney(varTot, true)}. Coche « fixe » pour loyer, assurances, abonnements.`),
-    sorted.length ? h('div', { class: 'list' }, sorted.map(catRow)) : h('div', { class: 'empty' }, 'Ajoute tes lignes : logement, assurance maladie, courses, transport...'),
+    h('small', { class: 'muted' }, `Perso ${fmtMoney(fixedTot + varTot - proTot, true)} · pro ${fmtMoney(proTot, true)}. Fixes ${fmtMoney(fixedTot, true)} · variables ${fmtMoney(varTot, true)}. Coche « fixe » pour ce qui revient chaque mois, « pro » pour Kal Mydas.`),
+    sorted.length ? h('div', null, groupe('Perso', sorted.filter(c => !isPro(c))), groupe('Pro (Kal Mydas)', sorted.filter(isPro))) : h('div', { class: 'empty' }, 'Ajoute tes lignes : logement, assurance maladie, courses, transport...'),
     h('div', { class: 'row' }, nc, nca, h('button', { class: 'btn small', onclick: () => { const c = nc.value.trim(); if (!c) return; B[c] = Math.max(0, r2(num(nca.value))); commit(); } }, 'Ajouter'))));
 
   // 4. dettes et épargne
@@ -428,7 +451,7 @@ function vueBudget(root) {
   const bucket = (label, n, goal, low) => h('div', { class: 'macro' }, h('div', { class: 'row between' }, h('small', null, label), h('small', null, `${fmtPct(pct(n), 0)} (repère ${goal} %)`)), progress(pct(n), low ? (pct(n) > goal ? 'warn' : '') : (pct(n) >= goal ? 'ok' : 'mid')));
   const top = catNames.filter(c => !isFixed(c)).sort((a, b) => (B[b] || 0) - (B[a] || 0)).slice(0, 3);
   root.append(h('section', { class: `card ${rest < 0 ? '' : 'gold'}` }, h('h3', null, 'Bilan du plan'),
-    h('div', { class: 'grid4' }, stat('Revenus', money(incTotal, true)), stat('Dépenses, dettes, épargne', money(fixedTot + varTot + debtTot + (pl.save || 0), true)),
+    h('div', { class: 'grid4' }, stat('Revenus', money(incTotal, true)), stat('Dépenses, dettes, épargne', money(fixedTot + varTot + debtTot + (pl.save || 0), true), proTot ? `dont pro ${fmtMoney(proTot, true)}` : ''),
       stat('Reste à répartir', h('span', { class: rest < 0 ? 'neg' : 'pos' }, h('span', { class: 'amt' }, signed(rest, true))), rest < 0 ? 'le plan dépasse tes revenus' : 'non affecté')),
     incTotal > 0 ? h('div', null, bucket('Besoins (charges fixes)', fixedTot, 50, true), bucket('Envies (variables)', varTot, 30, true), bucket('Épargne et dettes', debtTot + (pl.save || 0), 20, false),
       h('small', { class: 'muted' }, 'Repère 50 / 30 / 20 : un point de comparaison, pas une loi. Ta situation peut demander autre chose.')) : null,
