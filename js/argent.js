@@ -195,7 +195,7 @@ function vueTx(root) {
   const box = h('section', { class: 'card' });
   const draw = () => {
     const F = TXF, accs = [['', '(aucun compte)'], ...A().accounts.map(a => [a.id, a.name])];
-    const cats = [...new Set([...CAT_OUT, ...CAT_IN, ...A().tx.map(t => t.cat).filter(Boolean)])];
+    const cats = [...new Set([...CAT_OUT, ...Object.keys(A().budgets || {}), ...CAT_IN, ...A().tx.map(t => t.cat).filter(Boolean)])];
     const dl = h('datalist', { id: 'cats' }, cats.map(c => h('option', { value: c })));
     const f = {
       date: inp('date', F.date), amt: inp('text', F.amt, { inputmode: 'decimal', placeholder: '0.00' }), cat: inp('text', F.cat, { list: 'cats', placeholder: F.kind === 'in' ? 'Salaire' : 'Courses' }),
@@ -333,6 +333,36 @@ function vueBudgetSuivi(root) {
 
 /* ----- budget : le plan du mois (revenus, charges fixes, plafonds, dettes, épargne) puis le suivi ----- */
 const PL = () => (A().plan = A().plan || { income: [], fixed: {}, save: 0 });
+// Budget type d'une personne seule en Suisse romande (CHF par mois, ordre de grandeur, novembre 2026). Kal corrige chaque ligne ensuite.
+const BUDGET_TYPE = [
+  ['Logement', 1100, true, 'loyer et charges'],
+  ['Assurance maladie', 400, true, 'LAMal, prime de base'],
+  ['Impôts', 250, true, 'acomptes ou douzième'],
+  ['Électricité', 50, true, 'si pas dans les charges'],
+  ['Téléphone et internet', 70, true, 'mobile et box'],
+  ['Redevance radio-TV', 28, true, 'Serafe, 335 CHF par an'],
+  ['Assurance ménage et RC', 25, true, 'ménage et responsabilité civile'],
+  ['Abonnement transports', 80, true, 'abo général ou régional, ou leasing'],
+  ['Abonnements', 40, true, 'streaming, musique, applis, cloud'],
+  ['Frais bancaires', 5, true, 'tenue de compte, carte'],
+  ['Courses', 450, false, 'nourriture et boissons à la maison'],
+  ['Restaurants', 120, false, 'repas dehors, cafés, à emporter'],
+  ['Transport', 80, false, 'essence, billets, parking'],
+  ['Santé', 60, false, 'franchise, quote-part, pharmacie'],
+  ['Hygiène et ménage', 40, false, 'soins, coiffeur, produits'],
+  ['Vêtements', 60, false, 'habits et chaussures'],
+  ['Loisirs', 120, false, 'sorties, sport, hobbies'],
+  ['Cadeaux', 40, false, 'anniversaires, fêtes'],
+  ['Imprévus', 100, false, 'réparations, amendes, oublis'],
+];
+const NOTE_TYPE = Object.fromEntries(BUDGET_TYPE.map(x => [x[0], x[3]]));
+function remplirBudgetType() {
+  const pl = PL(), B = A().budgets, back = [garde(A(), 'budgets'), garde(A(), 'plan')];
+  let n = 0;
+  for (const [c, v, fixe] of BUDGET_TYPE) { if (B[c] > 0) continue; B[c] = v; if (fixe) pl.fixed[c] = true; else delete pl.fixed[c]; n++; }
+  if (!n) return toast('Toutes les lignes du budget type sont déjà remplies');
+  commit(); undoable(`${n} lignes posées : corrige les montants à ta réalité`, back);
+}
 let budTab = 'plan';
 function history3() { // moyenne des trois derniers mois complets qui ont des mouvements
   const now = monthKey(today()), months = [];
@@ -361,7 +391,9 @@ function vueBudget(root) {
       h('div', { class: 'row wrap' },
         h('button', { class: 'btn', onclick: () => { if (hist.inc > 0) pl.income = [{ id: uid(), name: 'Entrées moyennes', amt: r2(hist.inc) }]; for (const [c, v] of Object.entries(hist.cats)) { B[c] = r2(v); if (/logement|loyer|abonnement|imp[oô]t|frais bancaires|assurance/i.test(c)) pl.fixed[c] = true; } commit(); toast('Plan rempli avec ta moyenne'); } }, 'Remplir avec ma moyenne'),
         h('button', { class: 'btn ghost', onclick: () => { for (const [c, v] of Object.entries(hist.cats)) if (!isFixed(c)) B[c] = r2(v * 0.9); commit(); toast('Variables à 90 % de ta moyenne'); } }, 'Serrer les variables de 10 %')))
-      : h('p', { class: 'muted' }, 'Pas encore de mois complet saisi. Pose ton plan à la main, ou importe tes mouvements (onglet Transactions, Importer) pour partir de la réalité.')));
+      : h('p', { class: 'muted' }, 'Pas encore de mois complet saisi. Pose ton plan à la main, ou importe tes mouvements (onglet Transactions, Importer) pour partir de la réalité.'),
+    h('p', { class: 'muted' }, "Budget type : les charges fixes et les dépenses courantes d'une personne seule en Suisse romande, en ordre de grandeur. Les lignes déjà remplies ne bougent pas."),
+    h('button', { class: 'btn ghost', onclick: remplirBudgetType }, 'Remplir avec un budget type')));
 
   // 2. revenus
   const ni = inp('text', '', { placeholder: 'Nom (salaire, Kal Mydas...)' }), na = inp('text', '', { inputmode: 'decimal', placeholder: 'Montant par mois' });
@@ -376,7 +408,7 @@ function vueBudget(root) {
     const avg = hist && hist.cats[c] ? hist.cats[c] : 0;
     return h('div', { class: 'item' },
       h('label', { class: 'daybox', title: 'Charge fixe : même montant chaque mois' }, h('input', { type: 'checkbox', checked: isFixed(c), onchange: e => { if (e.target.checked) pl.fixed[c] = true; else delete pl.fixed[c]; commit(); } }), 'fixe'),
-      h('div', { class: 'grow' }, h('b', null, c), avg ? h('small', { class: 'muted' }, ` moyenne réelle ${fmtMoney(avg, true)}`) : null),
+      h('div', { class: 'grow' }, h('b', null, c), avg ? h('small', { class: 'muted' }, ` moyenne réelle ${fmtMoney(avg, true)}`) : NOTE_TYPE[c] ? h('small', { class: 'muted' }, ` ${NOTE_TYPE[c]}`) : null),
       inp('text', B[c] ? String(B[c]) : '', { inputmode: 'decimal', placeholder: 'par mois', class: 'lim', onchange: e => { B[c] = Math.max(0, r2(num(e.target.value))); commit(); } }));
   };
   const nc = inp('text', '', { placeholder: 'Nouvelle ligne (loyer, assurance...)' }), nca = inp('text', '', { inputmode: 'decimal', placeholder: 'Par mois' });
