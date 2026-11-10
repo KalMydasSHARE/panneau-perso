@@ -207,7 +207,7 @@ MODULES.home = {
     put(root,
       h('h2', null, `Bonjour Kal, ${dateLabel(td)}`),
       backupNag(),
-      ...blocsEcran('home', blocs),
+      tableau(blocsEcran('home', blocs), ['menu'], ['rapide', 'ensemble']),
       boutonEcran('home', 'Panneau', blocs));
     function vueEnsemble() { return h('div', { class: 'view' },
       h('div', { class: 'grid4' },

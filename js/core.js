@@ -369,7 +369,16 @@ const blocVisible = (ecran, k) => !(blocsReglage(ecran).off || []).includes(k);
 function blocsEcran(ecran, blocs) {
   const c = blocsReglage(ecran), off = new Set(c.off || []), ordre = c.ordre || [];
   const rang = k => { const i = ordre.indexOf(k); return i < 0 ? 1000 + blocs.findIndex(b => b[0] === k) : i; };
-  return blocs.filter(b => !off.has(b[0])).sort((a, b) => rang(a[0]) - rang(b[0])).map(b => b[2]());
+  return blocs.filter(b => !off.has(b[0])).sort((a, b) => rang(a[0]) - rang(b[0])).map(b => { const el = b[2](); if (el && el.dataset) el.dataset.bloc = b[0]; return el; });
+}
+/* Tablette en paysage et ordinateur (10 novembre 2026) : les blocs d'un écran sur deux colonnes, sans changer leur ordre sur téléphone.
+   droite : les blocs de la colonne de droite ; large : ceux qui prennent toute la largeur. Sous 1000 px, une seule colonne dans l'ordre choisi. */
+function tableau(els, droite, large = []) {
+  const L = [], R = [], hors = [];
+  els.forEach((el, i) => { if (!el || !el.style) return; el.style.order = i; const k = el.dataset.bloc; (large.includes(k) ? hors : droite.includes(k) ? R : L).push(el); });
+  const cols = [...L, ...R], premier = cols.length ? Math.min(...cols.map(e => +e.style.order)) : 0;
+  const col = kids => { const c = h('div', { class: 'tab-col' }, kids); c.style.order = premier; return c; };
+  return h('div', { class: `tableau${L.length && R.length ? '' : ' un'}` }, hors, col(L), R.length ? col(R) : null);
 }
 function personnaliserEcran(ecran, titre, blocs) {
   const body = h('div', { class: 'form' });

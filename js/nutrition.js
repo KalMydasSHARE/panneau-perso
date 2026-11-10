@@ -308,7 +308,7 @@ function vueNJour(root) {
     ul.length ? h('section', { class: 'card alertcard' }, h('h3', null, 'Limite haute dépassée'), ul.map(a => h('p', { class: a.type === 'NS' ? 'unk' : 'neg' }, h('b', null, a.nom), ` : ${ulText(a)}.`, a.note ? h('small', { class: 'muted' }, ` ${a.note}`) : null)),
       h('small', { class: 'muted' }, 'Limites de l\'EFSA pour un adulte en bonne santé. Ce n\'est pas un avis médical : parles-en à ton médecin si cela se répète.')) : null,
     d > today() ? futurBandeau(d) : null,
-    ...blocsEcran('nutri.jour', jourBlocs(d, { t, tg, mp, entries, quick, frag, ul, bar, limit, unkMark })),
+    tableau(blocsEcran('nutri.jour', jourBlocs(d, { t, tg, mp, entries, quick, frag, ul, bar, limit, unkMark })), ['menu', 'reserves', 'dette', 'bouger'], ['bilan']),
     N().fast && !blocVisible('nutri.jour', 'jeune') ? fastingCard() : null, // un jeûne en cours reste visible
     plateBar(d),
     t.miss ? h('p', { class: 'neg small' }, `${t.miss} repas pointe(nt) vers un aliment introuvable : il ne compte pas.`) : null,

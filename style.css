@@ -706,3 +706,44 @@ details.band>summary::-webkit-details-marker{display:none}
 .prop.combler:not(.first){background:transparent;border:1px solid var(--line)}
 .prop.combler .prop-nom{text-align:left}
 .equi{margin:.4rem 0;padding:.55rem .7rem;border-radius:12px;background:var(--fill);border:1px solid var(--line)}
+
+/* ----- tablette (10 novembre 2026) : boutons à la taille du doigt, deux colonnes en paysage ----- */
+/* blocs d'un écran : une colonne dans l'ordre choisi ; à partir de 1000 px, deux colonnes (saisie à gauche, propositions à droite) */
+.tableau{display:flex;flex-direction:column;gap:inherit}
+.tab-col{display:contents}
+.tab-col > details.vue-plus + details.vue-plus{margin-top:-.35rem}
+.nav a span{white-space:nowrap}
+@media (min-width:1000px){
+  .tableau{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:1rem;align-items:start}
+  .tableau > *{grid-column:1/-1}
+  .tableau > .tab-col{grid-column:auto;display:flex;flex-direction:column;gap:1rem;min-width:0}
+  .tableau.un > .tab-col{grid-column:1/-1}
+  .tab-col > *{order:0!important}
+  .tab-col .cols{grid-template-columns:1fr}
+}
+@media (min-width:1300px){.main{max-width:1240px}}
+/* écran tactile plus large qu'un téléphone (tablette, PC tactile) : mêmes tailles de doigt que sur téléphone */
+@media (pointer:coarse) and (min-width:761px){
+  input,select,textarea{font-size:16px}
+  .icon{min-width:44px;min-height:44px}
+  .stepper .icon{font-size:1.3rem}
+  .btn{min-height:44px;padding:.55rem 1.1rem}
+  .btn.small{min-height:40px;padding:.45rem .9rem;font-size:.88rem}
+  button.chip.pick,.chips.styles .chip{min-height:38px;padding:.35rem .85rem;font-size:.88rem}
+  .rate button{width:2.7rem;height:2.7rem}
+  .seg button,.seg a{min-height:42px}
+  .subtabs a{padding:.75rem 1rem}
+  .chip-x{min-width:38px;min-height:38px}
+  .toast-btn{min-height:42px}
+  input[type=checkbox]{transform:scale(1.5);margin:.3rem}
+  .check,.item:has(> input[type=checkbox]),.item:has(> label > input[type=checkbox]){min-height:52px}
+  .nav a{min-height:58px;min-width:84px}
+  details>summary{min-height:44px}
+  .prop-actions{gap:.5rem}
+}
+/* sur un écran tactile, pas d'effet de survol qui reste collé après un toucher */
+@media (hover:none){
+  a.card:hover{border-color:var(--line)}
+  .pick-line:hover{border-color:var(--line)}
+  .item.click:hover,.micro.click:hover{background:transparent}
+}
